@@ -1,0 +1,413 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  X, Sparkles, Tag,
+  FileText, Calendar, AlertCircle,
+  Plane, Camera, Coffee, Map, Sun, Music, Car,
+  ShoppingBag, Utensils, Hotel
+} from 'lucide-react';
+// 請確認此路徑正確指向你的 gemini.js 檔案
+import { runGemini } from '../../utils/gemini';
+// 請確認你有安裝並設定好 @react-google-maps/api
+import { Autocomplete } from '@react-google-maps/api';
+
+const TRAVEL_STYLES = [
+  { id: 'shopping', label: '逛街購物', emoji: '🛍️' },
+  { id: 'spot', label: '熱門踩點', emoji: '📸' },
+  { id: 'relax', label: '慢活漫遊', emoji: '☕' },
+  { id: 'food', label: '美食探索', emoji: '🍜' },
+  { id: 'nature', label: '自然風景', emoji: '🌲' },
+  { id: 'culture', label: '人文歷史', emoji: '⛩️' },
+  { id: 'drive', label: '自駕兜風', emoji: '🚗' },
+];
+
+const LOADING_MESSAGES = [
+  "正在掃描當地熱門打卡點...",
+  "正在計算最佳美食路線...",
+  "正在分析您目前的行程空檔...",
+  "AI 正在搜尋必吃招牌菜...",
+  "正在為您尋找順路的隱藏版景點...",
+  "正在確認營業時間...",
+  "正在打包虛擬行李...",
+  "正在挖掘商圈內的熱門好店..."
+];
+
+const LOADING_ICONS = [Plane, Map, Camera, Utensils, ShoppingBag, Coffee, Car, Sun, Music];
+
+export default function AIGenerationModal({
+  isOpen,
+  onClose,
+  onGenerate,
+  userFavorites = [],
+  isGenerating,
+  setIsGenerating,
+  setAiStatus,
+  currentTrip,
+  existingItinerary = []
+}) {
+  const [step, setStep] = useState('preferences');
+  const [selectedStyles, setSelectedStyles] = useState(['spot', 'food']);
+  const [userNote, setUserNote] = useState('');
+  const [selectedDays, setSelectedDays] = useState([]);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const [dailyHotels, setDailyHotels] = useState({});
+  const [defaultHotel, setDefaultHotel] = useState('');
+
+  const autocompleteRefs = useRef({});
+
+  const [msgIndex, setMsgIndex] = useState(0);
+  const [iconIndex, setIconIndex] = useState(0);
+
+  useEffect(() => {
+    if (isGenerating) {
+      const msgTimer = setInterval(() => {
+        setMsgIndex(prev => (prev + 1) % LOADING_MESSAGES.length);
+      }, 2500);
+      const iconTimer = setInterval(() => {
+        setIconIndex(prev => (prev + 1) % LOADING_ICONS.length);
+      }, 1800);
+      return () => {
+        clearInterval(msgTimer);
+        clearInterval(iconTimer);
+      };
+    }
+  }, [isGenerating]);
+
+  const tripDays = useMemo(() => {
+    if (!currentTrip?.startDate || !currentTrip?.endDate) return [];
+    const start = new Date(currentTrip.startDate);
+    const end = new Date(currentTrip.endDate);
+    const days = [];
+    let current = new Date(start);
+    let dayCount = 1;
+    while (current <= end) {
+      days.push({ day: dayCount, date: current.toISOString().split('T')[0] });
+      current.setDate(current.getDate() + 1);
+      dayCount++;
+    }
+    return days;
+  }, [currentTrip]);
+
+  useEffect(() => {
+    if (isOpen && tripDays.length > 0) {
+      setSelectedDays(tripDays.map(d => d.day));
+      setStep('preferences');
+      setErrorMsg('');
+      setDailyHotels(prev => {
+        const newHotels = { ...prev };
+        tripDays.forEach(d => {
+          if (!newHotels[d.day]) newHotels[d.day] = "";
+        });
+        return newHotels;
+      });
+    }
+  }, [isOpen, tripDays]);
+
+  if (!isOpen) return null;
+
+  const toggleStyle = (id) => setSelectedStyles(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+  const toggleDay = (dayNum) => setSelectedDays(prev => prev.includes(dayNum) ? prev.filter(d => d !== dayNum) : [...prev, dayNum]);
+
+  const handleDefaultHotelChange = (val) => {
+    setDefaultHotel(val);
+    setDailyHotels(prev => {
+      const next = { ...prev };
+      tripDays.forEach(d => { next[d.day] = val; });
+      return next;
+    });
+  };
+
+  const handleDailyHotelChange = (day, val) => {
+    setDailyHotels(prev => ({ ...prev, [day]: val }));
+  };
+
+  const onDefaultPlaceChanged = () => {
+    if (autocompleteRefs.current['default']) {
+      const place = autocompleteRefs.current['default'].getPlace();
+      if (place && place.name) {
+        handleDefaultHotelChange(place.name);
+      }
+    }
+  };
+
+  const onDailyPlaceChanged = (day) => {
+    if (autocompleteRefs.current[day]) {
+      const place = autocompleteRefs.current[day].getPlace();
+      if (place && place.name) {
+        handleDailyHotelChange(day, place.name);
+      }
+    }
+  };
+
+  const handleGenerateClick = async () => {
+    if (selectedDays.length === 0) {
+      setErrorMsg("請至少選擇一天");
+      return;
+    }
+
+    setStep('generating');
+    setIsGenerating(true);
+    setAiStatus("正在啟動...");
+
+    try {
+      const destination = currentTrip?.destination || "旅遊目的地";
+      const stylesLabels = TRAVEL_STYLES.filter(s => selectedStyles.includes(s.id)).map(s => s.label).join('、');
+      const daysToPlan = selectedDays.join('、');
+      const favoriteNames = userFavorites.length > 0 ? userFavorites.map(f => f.name).join('、') : "無";
+
+      // 提取所有已存在的景點名稱，用於避免重複
+      const allExistingNames = existingItinerary.map(item => item.name).join(', ');
+
+      const flightOut = currentTrip?.flightOut || {};
+      const flightIn = currentTrip?.flightIn || {};
+
+      let hotelPrompt = "";
+
+      tripDays.forEach((d) => {
+        if (!selectedDays.includes(d.day)) return;
+
+        const isFirstDay = d.day === 1;
+        const isLastDay = d.day === tripDays.length;
+        const tonightHotel = dailyHotels[d.day] || defaultHotel || "市中心";
+        const lastNightHotel = dailyHotels[d.day - 1] || defaultHotel || "市中心";
+
+        let startPoint = isFirstDay
+          ? (flightOut.airport ? `${flightOut.airport} 機場 (抵達 ${flightOut.time || '未定'})` : tonightHotel)
+          : lastNightHotel;
+
+        let endPoint = isLastDay && flightIn.airport
+          ? `${flightIn.airport} 機場 (起飛 ${flightIn.time || '未定'})`
+          : tonightHotel;
+
+        let timeConstraint = "";
+        if (isLastDay && flightIn.time) {
+          timeConstraint = `(需在 ${flightIn.time} 前 2.5 小時抵達機場)`;
+        } else if (isFirstDay && flightOut.time) {
+          timeConstraint = `(行程開始於 ${flightOut.time} 後)`;
+        }
+
+        // --- 【核心修改：取得該日既有行程與空檔】 ---
+        const currentDayItems = existingItinerary
+            .filter(i => Number(i.day) === d.day)
+            .sort((a, b) => {
+                const timeA = a.startTime ? parseInt(a.startTime.replace(':', '')) : 0;
+                const timeB = b.startTime ? parseInt(b.startTime.replace(':', '')) : 0;
+                return timeA - timeB;
+            });
+        
+        let existingContext = "";
+        let existingItemsList = "無";
+        
+        if (currentDayItems.length > 0) {
+            existingItemsList = currentDayItems.map(i => `[${i.startTime || '時間未定'}] ${i.name} (${i.type === 'food' ? '餐飲' : '景點'})`).join(' -> ');
+            existingContext = `
+            ★ 【重要：該日既有行程】
+            目前該日已安排：${existingItemsList}。
+            
+            請遵守以下「增量排程」規則：
+            1. **嚴禁重複**：絕對不要再次建議上述已存在的地點。
+            2. **填補空檔**：請分析上述行程的時間點，找出「空檔」並插入適合的新景點或餐廳。
+            3. **順路安排**：新插入的點必須與前後行程地理位置順路。
+            4. **時間合理**：若當天行程已滿（超過 4-5 個點），請僅針對「缺漏的餐點」做補充，不要硬塞景點導致時間卡在 23:59。
+            `;
+        }
+
+        hotelPrompt += `- Day ${d.day}: 起點 [${startPoint}] -> 終點 [${endPoint}] ${timeConstraint}${existingContext}\n`;
+      });
+
+      const prompt = `
+        你是一位旅遊規劃大師。請針對「${destination}」規劃第 [${daysToPlan}] 天行程。
+
+        【最高優先級：住宿串聯與順路邏輯】
+        請務必根據以下每日的「起點」、「終點」以及「既有行程」來安排中間的景點，確保行程順暢，不要折返跑：
+        ${hotelPrompt}
+
+        【強制規則：起訖點必列入】
+        請務必將每日的「起點」與「終點」明確列入行程中，生成對應的 JSON 物件：
+        1. 每天的 **第一個行程** 必須是該日的「起點」(飯店或機場)。
+        2. 每天的 **最後一個行程** 必須是該日的「終點」(飯店或機場)。
+
+        【三餐保障規則 (Critical)】
+        AI 必須檢查每日行程是否包含早、中、晚三餐。
+        1. **檢查現有行程**：若「既有行程」中已包含餐廳、夜市或標記為 'food' 的地點，則視為該餐已解決。
+        2. **補充缺漏**：若發現某餐（早餐 08:00-10:00、午餐 12:00-14:00、晚餐 18:00-20:00）有空檔且未安排，**必須** 插入一個推薦餐廳或特色小吃。
+        3. 請依據該日遊玩區域推薦順路美食。
+
+        【最高優先級：營業時間與時段邏輯】
+        請嚴格遵守各類型景點的營業時間，並反映在 "startTime" 欄位中：
+        1. **夜市**：17:00 後。
+        2. **酒吧**：19:00 後。
+        3. **寺廟/博物館**：09:00 - 16:00 (白天)。
+        4. **早市**：08:00 - 12:00。
+
+        【使用者偏好】
+        - 風格：${stylesLabels}
+        - 必遊/收藏(優先安排)：${favoriteNames}
+        - 備註：${userNote || "無"}
+        - 全域避雷(已排過)：${allExistingNames} (請絕對避免重複這些地點)
+
+        【aiSummary 欄位撰寫規則】：
+        - 請生成約 30 字以內的精簡摘要，描述這個地點「主要特色」或「用途」。
+        - 禁止廢話。
+
+        【排程邏輯】
+        1. 景點之間的移動必須合理。
+        2. 除非使用者備註，否則晚上回到住宿地點休息。
+
+        【格式規範】
+        回傳純 JSON 陣列。
+        [
+          {
+            "day": number,
+            "name": string,
+            "type": "spot"|"food"|"hotel"|"transport",
+            "aiSummary": string,
+            "tags": string[],
+            "startTime": string (HH:MM, 務必符合營業時間與行程順序),
+            "suggestedTimeSlot": "morning"|"afternoon"|"evening",
+            "duration": number (停留分鐘數),
+            "pos": { "lat": number, "lng": number }
+          }
+        ]
+      `;
+
+      const rawResponse = await runGemini(prompt);
+      const startIndex = rawResponse.indexOf('[');
+      const endIndex = rawResponse.lastIndexOf(']');
+      if (startIndex === -1 || endIndex === -1) throw new Error("JSON Error");
+      const jsonText = rawResponse.substring(startIndex, endIndex + 1);
+      const generatedData = JSON.parse(jsonText);
+
+      onGenerate(generatedData);
+
+    } catch (error) {
+      console.error("AI Error:", error);
+      let friendlyError = "AI 連線或解析失敗，請再試一次。";
+      if (error.message.includes("429") || error.message.includes("Resource exhausted")) {
+        friendlyError = "⚠️ AI 目前流量雍塞 (429)，請休息 1 分鐘後再試。";
+      }
+      setAiStatus("發生錯誤");
+      setTimeout(() => { setIsGenerating(false); setStep('preferences'); setErrorMsg(friendlyError); }, 2000);
+    }
+  };
+
+  const CurrentIcon = LOADING_ICONS[iconIndex];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-white">
+          <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2"><Sparkles size={20} className="text-purple-600"/> {step === 'preferences' ? 'AI 行程客製化' : 'AI 正在工作中'}</h3>
+          {!isGenerating && <button onClick={onClose}><X size={24} className="text-gray-400 hover:text-gray-600"/></button>}
+        </div>
+
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+          {step === 'preferences' ? (
+            <div className="space-y-6">
+
+              {/* 旅行風格 */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Tag size={16} /> 旅行風格</label>
+                <div className="flex flex-wrap gap-2">
+                  {TRAVEL_STYLES.map(style => (
+                    <button key={style.id} onClick={() => toggleStyle(style.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${selectedStyles.includes(style.id) ? 'bg-purple-100 border-purple-300 text-purple-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                      <span>{style.emoji}</span> {style.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 選擇天數 (置頂) */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Calendar size={16} /> 選擇要排程的天數</label>
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                  {tripDays.map((d) => (
+                    <div key={d.day} onClick={() => toggleDay(d.day)} className={`cursor-pointer rounded-lg border p-2 flex flex-col items-center justify-center transition-all ${selectedDays.includes(d.day) ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-gray-200 text-gray-500'}`}>
+                      <span className="text-xs opacity-80">{d.date.slice(5)}</span>
+                      <span className="font-bold text-sm">D{d.day}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 每日住宿設定 */}
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Hotel size={16} /> 每日住宿</label>
+                <div className="mb-4">
+                  <div className="text-xs text-gray-500 mb-1">主要住宿 (輸入後將自動填入所有天數)</div>
+                  <Autocomplete onLoad={(ref) => autocompleteRefs.current['default'] = ref} onPlaceChanged={onDefaultPlaceChanged}>
+                    <input type="text" className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-500 outline-none" placeholder="搜尋飯店..." value={defaultHotel} onChange={(e) => handleDefaultHotelChange(e.target.value)} />
+                  </Autocomplete>
+                </div>
+                <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
+                  {tripDays.filter(d => selectedDays.includes(d.day)).map((d) => (
+                    <div key={d.day} className="flex items-center gap-2">
+                      <span className="text-xs font-bold w-12 text-gray-600">Day {d.day}</span>
+                      <div className="flex-1">
+                        <Autocomplete onLoad={(ref) => autocompleteRefs.current[d.day] = ref} onPlaceChanged={() => onDailyPlaceChanged(d.day)}>
+                          <input type="text" className="w-full border border-gray-200 rounded p-2 text-xs focus:ring-1 focus:ring-purple-500 outline-none" value={dailyHotels[d.day] || ''} placeholder={`Day ${d.day} 住宿地點`} onChange={(e) => handleDailyHotelChange(d.day, e.target.value)} />
+                        </Autocomplete>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 特別備註 */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-2"><FileText size={16} /> 特別備註</label>
+                <textarea className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50" rows={2} placeholder="例如：有帶長輩、想吃海鮮..." value={userNote} onChange={(e) => setUserNote(e.target.value)} />
+              </div>
+
+              {errorMsg && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2"><AlertCircle size={16}/> {errorMsg}</div>}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 space-y-8 text-center">
+              <div className="relative">
+                <div className="absolute inset-0 bg-purple-200 rounded-full animate-ping opacity-20"></div>
+                <div className="absolute inset-0 bg-purple-100 rounded-full animate-ping opacity-40 delay-150"></div>
+                <div className="w-24 h-24 bg-gradient-to-tr from-purple-50 to-white rounded-full flex items-center justify-center relative z-10 shadow-lg border-2 border-purple-100">
+                  <div key={iconIndex} className="icon-drawing-container text-purple-600">
+                    <CurrentIcon size={48} strokeWidth={1.5} />
+                  </div>
+                  <Sparkles className="absolute -top-2 -right-2 text-yellow-400 animate-bounce" size={24} />
+                </div>
+              </div>
+              <div className="space-y-3 max-w-xs mx-auto">
+                <h4 className="text-xl font-bold text-gray-800 flex items-center justify-center gap-2">
+                  AI 正在施展魔法
+                  <span className="flex space-x-1">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-0"></span>
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150"></span>
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-300"></span>
+                  </span>
+                </h4>
+                <p className="text-purple-600 text-sm font-medium h-6 animate-in slide-in-from-bottom-2 fade-in duration-500 key={msgIndex}">
+                  {LOADING_MESSAGES[msgIndex]}
+                </p>
+                <p className="text-gray-400 text-xs">正在為您的 {currentTrip?.destination} 之旅打造最佳行程</p>
+              </div>
+              <div className="w-64 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-500 w-full animate-progress origin-left"></div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {step === 'preferences' && (
+          <div className="p-5 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+            <button onClick={onClose} className="px-5 py-2.5 text-gray-600 font-medium hover:bg-gray-200 rounded-xl">取消</button>
+            <button onClick={handleGenerateClick} className="px-6 py-2.5 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 shadow-lg flex items-center gap-2"><Sparkles size={18} /> 開始生成</button>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes progress { 0% { transform: translateX(-100%); } 50% { transform: translateX(0%); } 100% { transform: translateX(100%); } }
+        .animate-progress { animation: progress 2s infinite linear; }
+        @keyframes draw-lines { 0% { stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; } 10% { opacity: 1; } 100% { stroke-dasharray: 100; stroke-dashoffset: 0; opacity: 1; } }
+        .icon-drawing-container svg path, .icon-drawing-container svg circle, .icon-drawing-container svg line, .icon-drawing-container svg polyline, .icon-drawing-container svg rect { stroke-dasharray: 100; stroke-dashoffset: 100; animation: draw-lines 1.5s ease-out forwards; }
+      `}</style>
+    </div>
+  );
+}
