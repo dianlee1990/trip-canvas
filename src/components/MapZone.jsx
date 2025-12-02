@@ -193,7 +193,7 @@ export default function MapZone({
       }
   }, [resolvedLocations, isInitialLoad, activeDay]);
 
-  // 【修復】監聽左側選擇的地點，補上 URL 並清理 Place ID
+  // 【核心修復】監聽外部(Canvas/Sidebar)傳入的地點，若資料缺失則自動補全
   useEffect(() => {
       if (!selectedPlace || !selectedPlace.lat || !selectedPlace.lng) return;
       
@@ -208,24 +208,53 @@ export default function MapZone({
           rawPlaceId = rawPlaceId.replace(/^(ai-|place-|sidebar-)/, '');
       }
 
-      // 如果 selectedPlace 已經有 url 則使用，否則手動建構
+      // 構建基本 URL
       const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}&query_place_id=${rawPlaceId}`;
 
       const currentItinerary = itineraryRef.current || [];
       const existingItem = currentItinerary.find(i => i.id === placeId);
-      
       const hasSummary = existingItem?.aiSummary || selectedPlace.aiReason;
 
+      // 1. 先顯示目前已有的資料
       setPoiInfo({
           position: { lat: selectedPlace.lat, lng: selectedPlace.lng },
           data: {
               ...selectedPlace,
               place_id: rawPlaceId,
-              url: googleUrl, // 確保有 URL
+              url: googleUrl, 
           },
           aiSummary: hasSummary || null
       });
 
+      // 2. 【資料補全】如果缺少 評分、評論數 或 詳細URL，且地圖服務已就緒，則發起請求補全
+      if (mapRef.current && rawPlaceId && (!selectedPlace.rating || !selectedPlace.user_ratings_total || !selectedPlace.url)) {
+           const service = new window.google.maps.places.PlacesService(mapRef.current);
+           service.getDetails({
+               placeId: rawPlaceId,
+               fields: ['rating', 'user_ratings_total', 'url', 'price_level']
+           }, (details, status) => {
+               if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+                   setPoiInfo(prev => {
+                       // 確保使用者還在看同一個點
+                       if (prev && (prev.data.place_id === rawPlaceId)) {
+                           return {
+                               ...prev,
+                               data: {
+                                   ...prev.data,
+                                   rating: details.rating || prev.data.rating,
+                                   user_ratings_total: details.user_ratings_total || prev.data.user_ratings_total,
+                                   url: details.url || prev.data.url,
+                                   price_level: details.price_level || prev.data.price_level
+                               }
+                           };
+                       }
+                       return prev;
+                   });
+               }
+           });
+      }
+
+      // 3. AI 摘要邏輯
       if (!hasSummary) {
           setIsAnalyzing(true);
           runGemini(`請用繁體中文，30字以內簡短介紹「${selectedPlace.name}」的主要特色、用途或氛圍。`)
@@ -268,7 +297,7 @@ export default function MapZone({
           if (item.type === 'food') iconColor = '#f97316';
           if (item.type === 'hotel') iconColor = '#4f46e5';
 
-          // 【修復】點擊行程 Marker 時，動態補上資料庫可能缺失的 URL 與評分資料
+          // 【修復】點擊地圖上的 Marker 時，同樣執行資料補全邏輯
           elements.push({
               type: 'itinerary', 
               id: item.id, 
@@ -283,19 +312,47 @@ export default function MapZone({
                    
                    const googleUrl = item.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${rawId}`;
 
+                   // 1. 顯示基本資料
                    setPoiInfo({
                        position: position,
                        data: { 
                            name: item.name, 
                            rating: item.rating, 
-                           user_ratings_total: item.user_ratings_total, // 補上評論數
-                           price_level: item.price_level, // 補上價格等級
+                           user_ratings_total: item.user_ratings_total,
+                           price_level: item.price_level,
                            place_id: rawId,
-                           url: googleUrl, // 補上 URL
-                           image: item.image // 補上圖片
+                           url: googleUrl,
+                           image: item.image 
                        },
                        aiSummary: item.aiSummary
                    });
+
+                   // 2. 請求補全詳細資料
+                   if (mapRef.current && rawId && (!item.rating || !item.url || !item.user_ratings_total)) {
+                       const service = new window.google.maps.places.PlacesService(mapRef.current);
+                       service.getDetails({
+                           placeId: rawId,
+                           fields: ['rating', 'user_ratings_total', 'url', 'price_level']
+                       }, (details, status) => {
+                           if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+                               setPoiInfo(prev => {
+                                   if (prev && (prev.data.place_id === rawId)) {
+                                       return {
+                                           ...prev,
+                                           data: {
+                                               ...prev.data,
+                                               rating: details.rating || prev.data.rating,
+                                               user_ratings_total: details.user_ratings_total || prev.data.user_ratings_total,
+                                               url: details.url || prev.data.url,
+                                               price_level: details.price_level || prev.data.price_level
+                                           }
+                                       };
+                                   }
+                                   return prev;
+                               });
+                           }
+                       });
+                   }
               }
           });
       });
