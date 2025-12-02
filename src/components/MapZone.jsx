@@ -202,20 +202,21 @@ export default function MapZone({
       setShowSearchButton(false);
 
       const placeId = selectedPlace.id;
-      // 清理前綴，還原為原始的 google place id
       let rawPlaceId = selectedPlace.place_id || placeId;
       if (typeof rawPlaceId === 'string') {
           rawPlaceId = rawPlaceId.replace(/^(ai-|place-|sidebar-)/, '');
       }
 
-      // 構建基本 URL
-      const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}&query_place_id=${rawPlaceId}`;
+      // 避免對 temp- 開頭的 ID 進行無效查詢
+      const isTempId = rawPlaceId && (rawPlaceId.startsWith('temp-') || rawPlaceId.includes('lat-'));
+      const shouldFetchDetails = mapRef.current && rawPlaceId && !isTempId && (!selectedPlace.rating || !selectedPlace.user_ratings_total || !selectedPlace.url);
+
+      const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}&query_place_id=${!isTempId ? rawPlaceId : ''}`;
 
       const currentItinerary = itineraryRef.current || [];
       const existingItem = currentItinerary.find(i => i.id === placeId);
       const hasSummary = existingItem?.aiSummary || selectedPlace.aiReason;
 
-      // 1. 先顯示目前已有的資料
       setPoiInfo({
           position: { lat: selectedPlace.lat, lng: selectedPlace.lng },
           data: {
@@ -226,8 +227,8 @@ export default function MapZone({
           aiSummary: hasSummary || null
       });
 
-      // 2. 【資料補全】如果缺少 評分、評論數 或 詳細URL，且地圖服務已就緒，則發起請求補全
-      if (mapRef.current && rawPlaceId && (!selectedPlace.rating || !selectedPlace.user_ratings_total || !selectedPlace.url)) {
+      // 觸發詳細資料補全
+      if (shouldFetchDetails) {
            const service = new window.google.maps.places.PlacesService(mapRef.current);
            service.getDetails({
                placeId: rawPlaceId,
@@ -235,7 +236,6 @@ export default function MapZone({
            }, (details, status) => {
                if (status === window.google.maps.places.PlacesServiceStatus.OK) {
                    setPoiInfo(prev => {
-                       // 確保使用者還在看同一個點
                        if (prev && (prev.data.place_id === rawPlaceId)) {
                            return {
                                ...prev,
@@ -250,11 +250,12 @@ export default function MapZone({
                        }
                        return prev;
                    });
+               } else {
+                   console.warn("Places details fetch failed:", status);
                }
            });
       }
 
-      // 3. AI 摘要邏輯
       if (!hasSummary) {
           setIsAnalyzing(true);
           runGemini(`請用繁體中文，30字以內簡短介紹「${selectedPlace.name}」的主要特色、用途或氛圍。`)
@@ -275,7 +276,7 @@ export default function MapZone({
           setIsAnalyzing(false);
       }
 
-  }, [selectedPlace]);
+  }, [selectedPlace, mapInstance]); // 加入 mapInstance 依賴
 
   const { mapElements, pathCoordinates, polylineKey } = useMemo(() => {
       const elements = [];
@@ -297,7 +298,6 @@ export default function MapZone({
           if (item.type === 'food') iconColor = '#f97316';
           if (item.type === 'hotel') iconColor = '#4f46e5';
 
-          // 【修復】點擊地圖上的 Marker 時，同樣執行資料補全邏輯
           elements.push({
               type: 'itinerary', 
               id: item.id, 
@@ -310,9 +310,10 @@ export default function MapZone({
                    let rawId = item.place_id || item.id;
                    if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
                    
-                   const googleUrl = item.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${rawId}`;
+                   // 若是臨時 ID，不顯示 URL
+                   const isTempId = rawId && (rawId.startsWith('temp-') || rawId.includes('lat-'));
+                   const googleUrl = item.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${!isTempId ? rawId : ''}`;
 
-                   // 1. 顯示基本資料
                    setPoiInfo({
                        position: position,
                        data: { 
@@ -327,8 +328,8 @@ export default function MapZone({
                        aiSummary: item.aiSummary
                    });
 
-                   // 2. 請求補全詳細資料
-                   if (mapRef.current && rawId && (!item.rating || !item.url || !item.user_ratings_total)) {
+                   // 針對行程點擊，同樣執行補全邏輯
+                   if (mapRef.current && rawId && !isTempId && (!item.rating || !item.url || !item.user_ratings_total)) {
                        const service = new window.google.maps.places.PlacesService(mapRef.current);
                        service.getDetails({
                            placeId: rawId,
@@ -374,7 +375,18 @@ export default function MapZone({
       return { mapElements: elements, pathCoordinates: path, polylineKey: currentPolylineKey };
   }, [resolvedLocations, sidebarTab, handleAddToItinerary, selectedPlace, activeDay]);
 
-  const renderStars = (r) => <div className="flex text-yellow-500"><span className="font-bold text-gray-900 mr-1">{r}</span><Star size={12} fill="currentColor"/></div>;
+  // 修改：若無評分，則顯示「在 Google 地圖上查看」
+  const renderStars = (r, count) => {
+      if (!r && !count) return <span>在 Google 地圖上查看</span>;
+      return (
+          <div className="flex text-yellow-500">
+              <span className="font-bold text-gray-900 mr-1">{r}</span>
+              <Star size={12} fill="currentColor"/>
+              {count && <span className="text-gray-500 ml-1">({count})</span>}
+          </div>
+      );
+  };
+  
   const renderPrice = (l) => l ? <div className="flex text-gray-600 text-xs">{[...Array(4)].map((_, i) => <span key={i} className={i < l ? "font-bold text-gray-900":"text-gray-300"}>$</span>)}</div> : null;
   const isPoiFavorite = poiInfo && myFavorites.some(f => f.id === `place-${poiInfo.data.place_id}`);
 
@@ -413,7 +425,9 @@ export default function MapZone({
                                   <div className="p-1 max-w-[200px]">
                                       {poiImage && <img src={poiImage} className="w-full h-24 object-cover mb-2 rounded" alt={poiInfo.data.name}/>}
                                       <h3 className="font-bold text-sm mb-1">{poiInfo.data.name}</h3>
-                                      <a href={poiInfo.data.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2">{renderStars(poiInfo.data.rating)} <span>({poiInfo.data.user_ratings_total})</span></a>
+                                      <a href={poiInfo.data.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2">
+                                          {renderStars(poiInfo.data.rating, poiInfo.data.user_ratings_total)}
+                                      </a>
                                       <div className="flex gap-2 mb-2 items-center text-gray-600 text-xs">{renderPrice(poiInfo.data.price_level)}</div>
                                       
                                       <div className="mb-2">

@@ -39,6 +39,7 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
       const lat = item.pos?.lat || item.lat;
       const lng = item.pos?.lng || item.lng;
       if (onPlaceSelect && lat && lng) {
+          // 【關鍵修復】傳遞完整 item 資訊，確保包含 url, rating, user_ratings_total
           onPlaceSelect({ ...item, lat, lng });
       }
   };
@@ -201,15 +202,15 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                           try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) {}
                       }
 
-                      // 【修復】建構 Google Maps URL 與 完整 ID
+                      // 【修復】構建完整的資料物件
                       const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
 
                       return {
                           id: `ai-${place.place_id}`,
-                          place_id: place.place_id, // 新增：保存原始 place_id
+                          place_id: place.place_id, 
                           name: place.name,
                           rating: place.rating || 0,
-                          user_ratings_total: place.user_ratings_total || 0, // 新增：保存評論數
+                          user_ratings_total: place.user_ratings_total || 0, // 確保有評論數
                           type: type,
                           tags: place.types ? place.types.slice(0, 3) : [],
                           image: place.photos?.[0]?.getUrl({maxWidth: 200, maxHeight: 200}) || PLACEHOLDER_IMAGE_URL,
@@ -220,7 +221,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                           priceLevel: place.price_level,
                           isOpen: isOpenStatus,
                           aiReason: item.reason,
-                          url: googleUrl // 新增：保存 Google Maps 連結
+                          url: googleUrl // 確保有 URL
                       };
                   }
               } catch (e) {
@@ -275,15 +276,15 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                       try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) {}
                   }
 
-                  // 【修復】建構 Google Maps URL 與 完整 ID
+                  // 【修復】構建完整的資料物件
                   const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
 
                   return {
                       id: `place-${place.place_id}`,
-                      place_id: place.place_id, // 新增
+                      place_id: place.place_id,
                       name: place.name,
                       rating: place.rating || 0,
-                      user_ratings_total: place.user_ratings_total || 0, // 新增
+                      user_ratings_total: place.user_ratings_total || 0, // 確保有評論數
                       type: type,
                       tags: place.types ? place.types.slice(0, 3) : ['景點'],
                       image: place.photos?.[0]?.getUrl({maxWidth: 200, maxHeight: 200}) || PLACEHOLDER_IMAGE_URL,
@@ -293,7 +294,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                       },
                       priceLevel: place.price_level,
                       isOpen: isOpenStatus,
-                      url: googleUrl // 新增
+                      url: googleUrl // 確保有 URL
                   };
               });
               setTextSearchResults(formattedResults);
