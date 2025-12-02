@@ -1,12 +1,10 @@
-// App.jsx (Refactored for Routing)
 import React, { useState, useCallback, useEffect } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, orderBy, query, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, orderBy, query, writeBatch } from 'firebase/firestore';
 import { auth, db } from './utils/firebase';
-// 新增：引入路由元件
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom';
 
 import Sidebar from './components/Sidebar';
@@ -20,43 +18,75 @@ const libraries = ["places"];
 const DEFAULT_CENTER = { lat: 35.700, lng: 139.770 };
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// --- 時間重算邏輯 (保持不變) ---
+// --- 時間重算邏輯 ---
 const recalculateTimes = (items) => {
-    // ... 請將原本 App.jsx 的 recalculateTimes 完整程式碼貼回來 (source: 1734-1793) ...
-    // 為了節省篇幅，這裡省略，請務必複製貼上原本的邏輯
-    const sortedItems = [...items].sort((a,b)=>{
-        const da = Number(a.day||1), db=Number(b.day||1);
-        if(da!==db) return da-db;
-        return (a.order||0)-(b.order||0);
-    });
-    let cD=-1, cH=9, cM=0;
-    return sortedItems.map(item=>{
-        const iD = Number(item.day||1);
-        if(iD!==cD){cD=iD;cH=9;cM=0;}
-        if(item.startTime){
-            const [h,m]=item.startTime.split(':').map(Number);
-            if(!isNaN(h) && (cH*60+cM <= h*60+m || (cH===9&&cM===0))) {cH=h;cM=m||0;}
+  const sortedItems = [...items].sort((a, b) => {
+    const dayA = Number(a.day || 1);
+    const dayB = Number(b.day || 1);
+    if (dayA !== dayB) return dayA - dayB;
+    if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
+    const tA = a.startTime ? parseInt(a.startTime.replace(':', '')) : 9999;
+    const tB = b.startTime ? parseInt(b.startTime.replace(':', '')) : 9999;
+    return tA - tB;
+  });
+
+  let currentDay = -1;
+  let currentHour = 9;
+  let currentMinute = 0;
+
+  return sortedItems.map((item) => {
+    const itemDay = Number(item.day || 1);
+
+    if (itemDay !== currentDay) {
+      currentDay = itemDay;
+      currentHour = 9;
+      currentMinute = 0;
+    }
+
+    if (item.startTime) {
+      const [h, m] = item.startTime.split(':').map(Number);
+      if (!isNaN(h)) {
+        const currentTimeVal = currentHour * 60 + currentMinute;
+        const specifiedTimeVal = h * 60 + m;
+
+        if (currentTimeVal <= specifiedTimeVal || (currentHour === 9 && currentMinute === 0)) {
+          currentHour = h;
+          currentMinute = m || 0;
         }
-        const dur = Number(item.duration||item.suggestedDuration||60);
-        const timeStr = `${String(cH).padStart(2,'0')}:${String(cM).padStart(2,'0')}`;
-        const upd = {...item, time: timeStr, suggestedDuration: dur};
-        cM+=dur;
-        while(cM>=60){cM-=60;cH+=1;}
-        if(cH>=24){cH=23;cM=59;}
-        return upd;
-    });
+      }
+    }
+
+    const timeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+    const duration = Number(item.duration || item.suggestedDuration || 60);
+
+    const updatedItem = {
+      ...item,
+      time: timeStr,
+      suggestedDuration: duration
+    };
+
+    currentMinute += duration;
+    while (currentMinute >= 60) {
+      currentMinute -= 60;
+      currentHour += 1;
+    }
+    if (currentHour >= 24) {
+      currentHour = 23;
+      currentMinute = 59;
+    }
+
+    return updatedItem;
+  });
 };
 
-// --- MainEditor (現在變成一個獨立的頁面元件) ---
 const EditorPage = ({ isLoaded, user }) => {
-  const { tripId } = useParams(); // 從網址抓 ID
+  const { tripId } = useParams();
   const navigate = useNavigate();
   
   const [currentTrip, setCurrentTrip] = useState(null);
   const [tripLoading, setTripLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // 編輯器狀態
   const [sidebarTab, setSidebarTab] = useState('search');
   const [activeDay, setActiveDay] = useState(1);
   const [itinerary, setItinerary] = useState([]);
@@ -70,18 +100,18 @@ const EditorPage = ({ isLoaded, user }) => {
   const [mapBounds, setMapBounds] = useState(null);
   const [activeDragItem, setActiveDragItem] = useState(null);
 
-  // 1. 根據 URL ID 抓取行程資料 (解決重新整理消失的問題)
+  // 1. 抓取 Trip
   useEffect(() => {
     if (!tripId || !user) return;
     setTripLoading(true);
     
-    // 改為監聽 artifacts/{appId}/trips/{tripId} (全域)
+    // 改為查詢 artifacts/{appId}/trips/{tripId}
     const tripRef = doc(db, 'artifacts', appId, 'trips', tripId);
     
     const unsubscribe = onSnapshot(tripRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            // 權限檢查：如果你不在名單內，踢出去
+            // 權限檢查
             if (data.collaborators && !data.collaborators.includes(user.uid)) {
                 setError("您沒有權限編輯此行程");
                 setTripLoading(false);
@@ -103,10 +133,9 @@ const EditorPage = ({ isLoaded, user }) => {
     return () => unsubscribe();
   }, [tripId, user]);
 
-  // 2. 監聽該行程的 items (子集合)
+  // 2. 抓取 Items
   useEffect(() => {
     if (!tripId) return;
-    // 路徑改為: artifacts/{appId}/trips/{tripId}/items
     const itemsRef = collection(db, 'artifacts', appId, 'trips', tripId, 'items');
     const q = query(itemsRef, orderBy('order', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -116,11 +145,8 @@ const EditorPage = ({ isLoaded, user }) => {
     return () => unsubscribe();
   }, [tripId]);
 
-  // --- 以下 Handler 邏輯稍微調整路徑，其他邏輯不變 ---
-
   const handleUpdateTrip = useCallback(async (updatedFields) => {
     if (!tripId) return;
-    // 路徑改為全域
     await updateDoc(doc(db, 'artifacts', appId, 'trips', tripId), { ...updatedFields, updatedAt: serverTimestamp() });
   }, [tripId]);
 
@@ -177,7 +203,7 @@ const EditorPage = ({ isLoaded, user }) => {
         order: index, createdAt: new Date()
       };
     });
-    // Optimistic Update
+    
     setItinerary(prev => recalculateTimes([...prev, ...preparedItems]));
 
     try {
@@ -236,12 +262,10 @@ const EditorPage = ({ isLoaded, user }) => {
   );
 };
 
-// --- App Root (路由設定中心) ---
 export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   
-  // 地圖 API 只載入一次
   const { isLoaded, loadError } = useJsApiLoader({ id: 'google-map-script', googleMapsApiKey, libraries });
 
   useEffect(() => {
@@ -259,7 +283,6 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Dashboard user={user} isMapScriptLoaded={isLoaded} />} />
-        {/* 只有登入才能編輯，若沒登入就踢回首頁 */}
         <Route path="/trip/:tripId" element={user ? <EditorPage isLoaded={isLoaded} user={user} /> : <Navigate to="/" />} />
       </Routes>
     </BrowserRouter>
