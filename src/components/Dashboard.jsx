@@ -65,31 +65,28 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     }
     // 改為查詢全域 trips，條件是 collaborators 包含自己
     const tripsRef = collection(db, 'artifacts', appId, 'trips');
-    // 注意：若 console 報錯需要 index，請依照 console 連結去 Firebase 建立複合索引
+    
+    // --- 【重要修正】暫時移除 orderBy 以避免索引錯誤 ---
+    // 等你確認功能正常後，可以再去 Firebase 建立索引並把 orderBy 加回來
     const q = query(
       tripsRef, 
-      where('collaborators', 'array-contains', user.uid),
-      orderBy('updatedAt', 'desc')
+      where('collaborators', 'array-contains', user.uid)
+      // orderBy('updatedAt', 'desc') 
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // 在前端手動排序 (因為資料量不大，這樣比較安全)
+      tripList.sort((a, b) => {
+          const timeA = a.updatedAt?.seconds || 0;
+          const timeB = b.updatedAt?.seconds || 0;
+          return timeB - timeA; // 新的在前
+      });
       setTrips(tripList);
       setLoading(false);
     }, (error) => {
       console.error("Fetch trips error:", error);
-      // Fallback: 如果因為沒有 index 而報錯，先暫時不排序
-      if (error.message.includes("index")) {
-          const fallbackQ = query(tripsRef, where('collaborators', 'array-contains', user.uid));
-          onSnapshot(fallbackQ, (snap) => {
-             const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-             list.sort((a,b) => (b.updatedAt?.seconds||0) - (a.updatedAt?.seconds||0));
-             setTrips(list);
-             setLoading(false);
-          });
-      } else {
-        setLoading(false);
-      }
+      setLoading(false);
     });
     return () => unsubscribe();
   }, [user]);
