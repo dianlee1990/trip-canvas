@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
-import { Wallet, Loader2, AlertTriangle, Star, Plus, Heart, Search, MapPin, Sparkles } from 'lucide-react';
+import { Wallet, Loader2, AlertTriangle, Star, Plus, Heart, Search, MapPin, Sparkles, Clock, DollarSign } from 'lucide-react';
 import { GoogleMap, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
 import { runGemini } from '../utils/gemini';
 
@@ -70,6 +70,54 @@ export default function MapZone({
       }
   }, [setMapCenter, setMapBounds]);
 
+  // --- 核心 helper: 獲取 Google Place 詳細資料 ---
+  const fetchGoogleDetails = useCallback((rawId, name, currentData, callback) => {
+      if (!mapRef.current) return;
+      const service = new window.google.maps.places.PlacesService(mapRef.current);
+      
+      const requestFields = ['name', 'rating', 'user_ratings_total', 'url', 'price_level', 'opening_hours', 'formatted_address'];
+
+      const performGetDetails = (placeId) => {
+          service.getDetails({
+              placeId: placeId,
+              fields: requestFields
+          }, (details, status) => {
+              if (status === window.google.maps.places.PlacesServiceStatus.OK && details) {
+                  callback({
+                      ...currentData,
+                      rating: details.rating,
+                      user_ratings_total: details.user_ratings_total,
+                      url: details.url,
+                      price_level: details.price_level,
+                      opening_hours: details.opening_hours, // 新增：營業時間
+                      formatted_address: details.formatted_address,
+                      place_id: placeId // 更新為真實 ID
+                  });
+              }
+          });
+      };
+
+      // 判斷 ID 是否為有效的 Google Place ID (通常以 ChIJ 開頭)
+      // 若 ID 無效或看起來像內部 ID，則先用名稱搜尋
+      const isValidGoogleId = rawId && typeof rawId === 'string' && rawId.startsWith('ChIJ');
+
+      if (isValidGoogleId) {
+          performGetDetails(rawId);
+      } else if (name) {
+          // 如果沒有有效 ID，嘗試用名稱搜尋 (Find Place)
+          const request = {
+              query: name,
+              fields: ['place_id', 'geometry']
+          };
+          service.findPlaceFromQuery(request, (results, status) => {
+              if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results[0]) {
+                  // 找到真實 ID 後，再查詳細資料
+                  performGetDetails(results[0].place_id);
+              }
+          });
+      }
+  }, []);
+
   const onLoad = useCallback((map) => {
       mapRef.current = map;
       if (setMapInstance) setMapInstance(map);
@@ -113,7 +161,6 @@ export default function MapZone({
                           try {
                               const prompt = `請用繁體中文，30字以內簡短介紹「${place.name}」的主要特色、用途或氛圍。`;
                               const summary = await runGemini(prompt);
-                              
                               setPoiInfo(prev => {
                                   if (prev && prev.data.place_id === placeId) {
                                       return { ...prev, aiSummary: summary };
@@ -193,7 +240,7 @@ export default function MapZone({
       }
   }, [resolvedLocations, isInitialLoad, activeDay]);
 
-  // 【修復】移除 mapInstance 依賴，避免 ReferenceError
+  // 監聽外部選擇的地點 (Sidebar)
   useEffect(() => {
       if (!selectedPlace || !selectedPlace.lat || !selectedPlace.lng) return;
       
@@ -207,12 +254,13 @@ export default function MapZone({
           rawPlaceId = rawPlaceId.replace(/^(ai-|place-|sidebar-)/, '');
       }
 
-      // 避免對 temp- 開頭的 ID 進行無效查詢
-      const isTempId = rawPlaceId && (rawPlaceId.startsWith('temp-') || rawPlaceId.includes('lat-'));
-      // 這裡直接使用 mapRef.current 判斷，不依賴 mapInstance 變數
-      const shouldFetchDetails = mapRef.current && rawPlaceId && !isTempId && (!selectedPlace.rating || !selectedPlace.user_ratings_total || !selectedPlace.url);
-
-      const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}&query_place_id=${!isTempId ? rawPlaceId : ''}`;
+      // 構建基本資料
+      const initialData = {
+          ...selectedPlace,
+          place_id: rawPlaceId,
+          // 如果沒有 URL，暫時給一個基於 ID 的，稍後會由 fetchGoogleDetails 更新為正確的
+          url: selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}&query_place_id=${rawPlaceId}`,
+      };
 
       const currentItinerary = itineraryRef.current || [];
       const existingItem = currentItinerary.find(i => i.id === placeId);
@@ -220,49 +268,31 @@ export default function MapZone({
 
       setPoiInfo({
           position: { lat: selectedPlace.lat, lng: selectedPlace.lng },
-          data: {
-              ...selectedPlace,
-              place_id: rawPlaceId,
-              url: googleUrl, 
-          },
+          data: initialData,
           aiSummary: hasSummary || null
       });
 
-      // 觸發詳細資料補全
-      if (shouldFetchDetails) {
-           const service = new window.google.maps.places.PlacesService(mapRef.current);
-           service.getDetails({
-               placeId: rawPlaceId,
-               fields: ['rating', 'user_ratings_total', 'url', 'price_level']
-           }, (details, status) => {
-               if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-                   setPoiInfo(prev => {
-                       if (prev && (prev.data.place_id === rawPlaceId)) {
-                           return {
-                               ...prev,
-                               data: {
-                                   ...prev.data,
-                                   rating: details.rating || prev.data.rating,
-                                   user_ratings_total: details.user_ratings_total || prev.data.user_ratings_total,
-                                   url: details.url || prev.data.url,
-                                   price_level: details.price_level || prev.data.price_level
-                               }
-                           };
-                       }
-                       return prev;
-                   });
-               } else {
-                   console.warn("Places details fetch failed:", status);
-               }
-           });
+      // 嘗試獲取更多細節 (評分、營業時間等)
+      if (mapRef.current) {
+          fetchGoogleDetails(rawPlaceId, selectedPlace.name, initialData, (updatedData) => {
+              setPoiInfo(prev => {
+                  // 確保還在看同一個地點
+                  if (prev && prev.data.name === updatedData.name) {
+                      return { ...prev, data: updatedData };
+                  }
+                  return prev;
+              });
+          });
       }
 
+      // AI 分析邏輯
       if (!hasSummary) {
           setIsAnalyzing(true);
           runGemini(`請用繁體中文，30字以內簡短介紹「${selectedPlace.name}」的主要特色、用途或氛圍。`)
             .then(res => {
                 setPoiInfo(prev => {
-                    if (prev && (prev.data.place_id === rawPlaceId || prev.data.place_id === placeId)) {
+                    // 比對名稱或 ID 確保是同一個點
+                    if (prev && prev.data.name === selectedPlace.name) {
                         return { ...prev, aiSummary: res };
                     }
                     return prev;
@@ -270,14 +300,14 @@ export default function MapZone({
             })
             .catch(e => {
                 console.error("Auto-analyze failed", e);
-                setPoiInfo(prev => prev && (prev.data.place_id === rawPlaceId || prev.data.place_id === placeId) ? { ...prev, aiSummary: "暫時無法分析" } : prev);
+                setPoiInfo(prev => prev && prev.data.name === selectedPlace.name ? { ...prev, aiSummary: "暫時無法分析" } : prev);
             })
             .finally(() => setIsAnalyzing(false));
       } else {
           setIsAnalyzing(false);
       }
 
-  }, [selectedPlace]); // 已移除 mapInstance
+  }, [selectedPlace, fetchGoogleDetails]);
 
   const { mapElements, pathCoordinates, polylineKey } = useMemo(() => {
       const elements = [];
@@ -311,46 +341,33 @@ export default function MapZone({
                    let rawId = item.place_id || item.id;
                    if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
                    
-                   const isTempId = rawId && (rawId.startsWith('temp-') || rawId.includes('lat-'));
-                   const googleUrl = item.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${!isTempId ? rawId : ''}`;
+                   // 構建初始資料
+                   const initialData = {
+                       name: item.name, 
+                       rating: item.rating, 
+                       user_ratings_total: item.user_ratings_total,
+                       price_level: item.price_level,
+                       place_id: rawId,
+                       url: item.url, // 可能為 undefined
+                       image: item.image 
+                   };
 
                    setPoiInfo({
                        position: position,
-                       data: { 
-                           name: item.name, 
-                           rating: item.rating, 
-                           user_ratings_total: item.user_ratings_total,
-                           price_level: item.price_level,
-                           place_id: rawId,
-                           url: googleUrl,
-                           image: item.image 
-                       },
+                       data: initialData,
                        aiSummary: item.aiSummary
                    });
 
-                   if (mapRef.current && rawId && !isTempId && (!item.rating || !item.url || !item.user_ratings_total)) {
-                       const service = new window.google.maps.places.PlacesService(mapRef.current);
-                       service.getDetails({
-                           placeId: rawId,
-                           fields: ['rating', 'user_ratings_total', 'url', 'price_level']
-                       }, (details, status) => {
-                           if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-                               setPoiInfo(prev => {
-                                   if (prev && (prev.data.place_id === rawId)) {
-                                       return {
-                                           ...prev,
-                                           data: {
-                                               ...prev.data,
-                                               rating: details.rating || prev.data.rating,
-                                               user_ratings_total: details.user_ratings_total || prev.data.user_ratings_total,
-                                               url: details.url || prev.data.url,
-                                               price_level: details.price_level || prev.data.price_level
-                                           }
-                                       };
-                                   }
-                                   return prev;
-                               });
-                           }
+                   // 觸發詳細資料補全 (包含營業時間、真實連結)
+                   if (mapRef.current) {
+                       fetchGoogleDetails(rawId, item.name, initialData, (updatedData) => {
+                           setPoiInfo(prev => {
+                               // 確保還在看同一個點 (用名稱比對比較安全，因為 ID 可能變過)
+                               if (prev && prev.data.name === updatedData.name) {
+                                   return { ...prev, data: updatedData };
+                               }
+                               return prev;
+                           });
                        });
                    }
               }
@@ -372,8 +389,9 @@ export default function MapZone({
           }
       }
       return { mapElements: elements, pathCoordinates: path, polylineKey: currentPolylineKey };
-  }, [resolvedLocations, sidebarTab, handleAddToItinerary, selectedPlace, activeDay]);
+  }, [resolvedLocations, sidebarTab, handleAddToItinerary, selectedPlace, activeDay, fetchGoogleDetails]);
 
+  // UI 渲染 Helper
   const renderStars = (r, count) => {
       if (!r && !count) return <span>在 Google 地圖上查看</span>;
       return (
@@ -387,8 +405,10 @@ export default function MapZone({
   
   const renderPrice = (l) => l ? <div className="flex text-gray-600 text-xs">{[...Array(4)].map((_, i) => <span key={i} className={i < l ? "font-bold text-gray-900":"text-gray-300"}>$</span>)}</div> : null;
   const isPoiFavorite = poiInfo && myFavorites.some(f => f.id === `place-${poiInfo.data.place_id}`);
-
   const poiImage = poiInfo?.data?.photos?.[0]?.getUrl({maxWidth: 200, maxHeight: 150}) || poiInfo?.data?.image;
+  
+  // 新增：營業時間顯示
+  const openStatus = poiInfo?.data?.opening_hours?.isOpen?.() ?? null;
 
   return (
       <aside className="flex-1 min-w-[300px] bg-white border-l border-gray-200 flex flex-col z-20 hidden lg:flex">
@@ -426,7 +446,16 @@ export default function MapZone({
                                       <a href={poiInfo.data.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2">
                                           {renderStars(poiInfo.data.rating, poiInfo.data.user_ratings_total)}
                                       </a>
-                                      <div className="flex gap-2 mb-2 items-center text-gray-600 text-xs">{renderPrice(poiInfo.data.price_level)}</div>
+                                      
+                                      <div className="flex items-center gap-3 mb-2 text-xs">
+                                          {renderPrice(poiInfo.data.price_level)}
+                                          {/* 顯示營業狀態 */}
+                                          {openStatus !== null && (
+                                              <span className={`font-medium flex items-center gap-1 ${openStatus ? 'text-green-600' : 'text-red-600'}`}>
+                                                  <Clock size={10}/> {openStatus ? '營業中' : '休息中'}
+                                              </span>
+                                          )}
+                                      </div>
                                       
                                       <div className="mb-2">
                                           {poiInfo.aiSummary ? (
