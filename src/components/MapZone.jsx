@@ -1,7 +1,6 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { Wallet, Loader2, AlertTriangle, Star, Plus, Heart, Search, MapPin, Sparkles } from 'lucide-react';
 import { GoogleMap, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
-// 引入 AI 工具
 import { runGemini } from '../utils/gemini';
 
 const containerStyle = { width: '100%', height: '100%' };
@@ -29,13 +28,10 @@ export default function MapZone({
   const mapRef = useRef(null);
   const [poiInfo, setPoiInfo] = useState(null);
   const [showSearchButton, setShowSearchButton] = useState(false);
-  
-  // 新增：控制 AI 分析的 Loading 狀態
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const onPlaceSelectRef = useRef(onPlaceSelect);
   const handleAddToItineraryRef = useRef(handleAddToItinerary);
-  // 使用 Ref 追蹤 itinerary，避免在 Event Listener 中讀到舊資料
   const itineraryRef = useRef(itinerary);
 
   useEffect(() => {
@@ -81,7 +77,7 @@ export default function MapZone({
       map.addListener('dragstart', () => setShowSearchButton(false));
       map.addListener('click', (event) => {
           setPoiInfo(null);
-          setIsAnalyzing(false); // 重置分析狀態
+          setIsAnalyzing(false); 
           if (event.placeId) {
               event.stop();
               const placeId = event.placeId;
@@ -91,12 +87,10 @@ export default function MapZone({
                   fields: ['name', 'formatted_address', 'geometry', 'rating', 'user_ratings_total', 'url', 'price_level', 'opening_hours', 'photos', 'types']
               }, async (place, status) => {
                   if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-                      // 使用 ref 取得最新的 itinerary
                       const currentItinerary = itineraryRef.current || [];
-                      // 檢查這個點是否已經在行程中且有 AI 摘要
                       const existingItem = currentItinerary.find(item => 
                           (item.place_id === placeId) || 
-                          (item.name === place.name) // 簡易 fallback 比對
+                          (item.name === place.name)
                       );
 
                       const hasExistingSummary = !!existingItem?.aiSummary;
@@ -104,7 +98,6 @@ export default function MapZone({
                       setPoiInfo({ 
                           position: place.geometry.location, 
                           data: { ...place, place_id: placeId },
-                          // 如果行程中已經有摘要，直接帶入
                           aiSummary: hasExistingSummary ? existingItem.aiSummary : null 
                       });
 
@@ -115,14 +108,12 @@ export default function MapZone({
                           });
                       }
 
-                      // 若無摘要，則自動觸發 AI 分析
                       if (!hasExistingSummary) {
                           setIsAnalyzing(true);
                           try {
                               const prompt = `請用繁體中文，30字以內簡短介紹「${place.name}」的主要特色、用途或氛圍。`;
                               const summary = await runGemini(prompt);
                               
-                              // 確保使用者還在看同一個點才更新 State
                               setPoiInfo(prev => {
                                   if (prev && prev.data.place_id === placeId) {
                                       return { ...prev, aiSummary: summary };
@@ -145,7 +136,7 @@ export default function MapZone({
               });
           }
       });
-  }, [setMapInstance]); // 移除 itinerary 依賴，改用 ref
+  }, [setMapInstance]);
 
   const onUnmount = useCallback(() => {
       if (mapRef.current) window.google.maps.event.clearInstanceListeners(mapRef.current);
@@ -182,7 +173,6 @@ export default function MapZone({
       });
   }, [itinerary, isMapScriptLoaded, geocodePlace]);
   
-  // Fit Bounds & Zoom Logic
   useEffect(() => {
       if (!mapRef.current || resolvedLocations.length === 0) return;
       const dayLocations = resolvedLocations.filter(item => {
@@ -203,40 +193,45 @@ export default function MapZone({
       }
   }, [resolvedLocations, isInitialLoad, activeDay]);
 
-  // 修改：當左側選單點擊時 (selectedPlace 改變)，直接顯示 POI 資訊卡
+  // 【修復】監聽左側選擇的地點，補上 URL 並清理 Place ID
   useEffect(() => {
       if (!selectedPlace || !selectedPlace.lat || !selectedPlace.lng) return;
       
-      // 1. 移動地圖
       setCenterState({ lat: selectedPlace.lat, lng: selectedPlace.lng });
       setZoomState(15);
       setShowSearchButton(false);
 
-      // 2. 顯示 POI 資訊卡 (使用左側傳來的完整資料)
       const placeId = selectedPlace.id;
+      // 清理前綴，還原為原始的 google place id
+      let rawPlaceId = selectedPlace.place_id || placeId;
+      if (typeof rawPlaceId === 'string') {
+          rawPlaceId = rawPlaceId.replace(/^(ai-|place-|sidebar-)/, '');
+      }
+
+      // 如果 selectedPlace 已經有 url 則使用，否則手動建構
+      const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}&query_place_id=${rawPlaceId}`;
+
       const currentItinerary = itineraryRef.current || [];
       const existingItem = currentItinerary.find(i => i.id === placeId);
       
-      // 優先權：行程中的摘要 > 左側 AI 列表的摘要
       const hasSummary = existingItem?.aiSummary || selectedPlace.aiReason;
 
       setPoiInfo({
           position: { lat: selectedPlace.lat, lng: selectedPlace.lng },
           data: {
-              ...selectedPlace, // 包含 name, rating, image (Sidebar 傳的)
-              place_id: placeId,
+              ...selectedPlace,
+              place_id: rawPlaceId,
+              url: googleUrl, // 確保有 URL
           },
           aiSummary: hasSummary || null
       });
 
-      // 3. 如果完全沒有摘要，才觸發即時分析
       if (!hasSummary) {
           setIsAnalyzing(true);
           runGemini(`請用繁體中文，30字以內簡短介紹「${selectedPlace.name}」的主要特色、用途或氛圍。`)
             .then(res => {
                 setPoiInfo(prev => {
-                    // 確保還在看同一個地點才更新
-                    if (prev && prev.data.place_id === placeId) {
+                    if (prev && (prev.data.place_id === rawPlaceId || prev.data.place_id === placeId)) {
                         return { ...prev, aiSummary: res };
                     }
                     return prev;
@@ -244,7 +239,7 @@ export default function MapZone({
             })
             .catch(e => {
                 console.error("Auto-analyze failed", e);
-                setPoiInfo(prev => prev && prev.data.place_id === placeId ? { ...prev, aiSummary: "暫時無法分析" } : prev);
+                setPoiInfo(prev => prev && (prev.data.place_id === rawPlaceId || prev.data.place_id === placeId) ? { ...prev, aiSummary: "暫時無法分析" } : prev);
             })
             .finally(() => setIsAnalyzing(false));
       } else {
@@ -253,7 +248,6 @@ export default function MapZone({
 
   }, [selectedPlace]);
 
-  // 修改：在 useMemo 中計算 polylineKey，確保順序變更時 key 會改變
   const { mapElements, pathCoordinates, polylineKey } = useMemo(() => {
       const elements = [];
       const path = [];
@@ -274,6 +268,7 @@ export default function MapZone({
           if (item.type === 'food') iconColor = '#f97316';
           if (item.type === 'hotel') iconColor = '#4f46e5';
 
+          // 【修復】點擊行程 Marker 時，動態補上資料庫可能缺失的 URL 與評分資料
           elements.push({
               type: 'itinerary', 
               id: item.id, 
@@ -283,12 +278,21 @@ export default function MapZone({
               title: item.name, 
               zIndex: 2,
               onClick: () => {
+                   let rawId = item.place_id || item.id;
+                   if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
+                   
+                   const googleUrl = item.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${rawId}`;
+
                    setPoiInfo({
                        position: position,
                        data: { 
                            name: item.name, 
                            rating: item.rating, 
-                           place_id: item.place_id,
+                           user_ratings_total: item.user_ratings_total, // 補上評論數
+                           price_level: item.price_level, // 補上價格等級
+                           place_id: rawId,
+                           url: googleUrl, // 補上 URL
+                           image: item.image // 補上圖片
                        },
                        aiSummary: item.aiSummary
                    });
@@ -317,7 +321,6 @@ export default function MapZone({
   const renderPrice = (l) => l ? <div className="flex text-gray-600 text-xs">{[...Array(4)].map((_, i) => <span key={i} className={i < l ? "font-bold text-gray-900":"text-gray-300"}>$</span>)}</div> : null;
   const isPoiFavorite = poiInfo && myFavorites.some(f => f.id === `place-${poiInfo.data.place_id}`);
 
-  // 修改圖片顯示邏輯：支援 Sidebar 傳入的 image 字串
   const poiImage = poiInfo?.data?.photos?.[0]?.getUrl({maxWidth: 200, maxHeight: 150}) || poiInfo?.data?.image;
 
   return (
@@ -356,7 +359,6 @@ export default function MapZone({
                                       <a href={poiInfo.data.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2">{renderStars(poiInfo.data.rating)} <span>({poiInfo.data.user_ratings_total})</span></a>
                                       <div className="flex gap-2 mb-2 items-center text-gray-600 text-xs">{renderPrice(poiInfo.data.price_level)}</div>
                                       
-                                      {/* --- AI 摘要區塊 (自動執行) --- */}
                                       <div className="mb-2">
                                           {poiInfo.aiSummary ? (
                                               <div className="bg-purple-50 border border-purple-100 p-2 rounded-lg text-xs text-purple-800 leading-relaxed">

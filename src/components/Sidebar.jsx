@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Map, Search, Sparkles, Heart, Plus, Loader2, DollarSign, Clock, Navigation, AlertTriangle,
   ChevronLeft, Camera, Coffee, ShoppingBag, Bed, Activity, Utensils,
-  Beer, Landmark, Train, Mountain // 新增 Icon
+  Beer, Landmark, Train, Mountain
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { IconByType } from '../icons/IconByType';
@@ -10,7 +10,6 @@ import { runGemini } from '../utils/gemini';
 
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/64x64?text=No+Image";
 
-// 修改：擴充至 10 個 Filter
 const CATEGORY_FILTERS = [
     { id: 'all', label: '綜合', icon: Sparkles },
     { id: 'spot', label: '景點', icon: Camera },
@@ -18,10 +17,10 @@ const CATEGORY_FILTERS = [
     { id: 'shopping', label: '購物', icon: ShoppingBag },
     { id: 'massage', label: '按摩', icon: Activity },
     { id: 'hotel', label: '住宿', icon: Bed },
-    { id: 'bar', label: '酒吧', icon: Beer },       // 新增
-    { id: 'temple', label: '寺廟', icon: Landmark }, // 新增
-    { id: 'nature', label: '自然', icon: Mountain }, // 新增
-    { id: 'transport', label: '車站', icon: Train }, // 新增
+    { id: 'bar', label: '酒吧', icon: Beer },
+    { id: 'temple', label: '寺廟', icon: Landmark },
+    { id: 'nature', label: '自然', icon: Mountain },
+    { id: 'transport', label: '車站', icon: Train },
 ];
 
 const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, handleAddToItinerary, onPlaceSelect }) => {
@@ -69,7 +68,6 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
               <h4 className="font-bold text-sm text-gray-800 truncate flex items-center gap-1"><IconByType type={item.type} size={14}/> {item.name}</h4>
               <span className="text-xs text-orange-500 font-bold">★{item.rating || 4.0}</span>
               <div className="mt-1 flex items-center gap-3">{renderPrice(item.priceLevel)}{renderOpenStatus(item.isOpen)}</div>
-              {/* 若為 AI 推薦項目，顯示簡短摘要 */}
               {!isFavoriteView && item.aiReason && (
                   <p className="text-[10px] text-gray-500 mt-1 line-clamp-1 bg-gray-50 px-1 rounded">{item.aiReason}</p>
               )}
@@ -91,8 +89,8 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
 export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggleFavorite, handleAddToItinerary, isMapScriptLoaded, mapInstance, mapCenter, onPlaceSelect, mapBounds, onBack }) {
  
   const [searchInput, setSearchInput] = useState('');
-  const [textSearchResults, setTextSearchResults] = useState([]); // Google Search 結果
-  const [aiRecommendations, setAiRecommendations] = useState([]); // AI 推薦結果
+  const [textSearchResults, setTextSearchResults] = useState([]); 
+  const [aiRecommendations, setAiRecommendations] = useState([]); 
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
   const [currentCityName, setCurrentCityName] = useState("");
@@ -101,11 +99,9 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
  
   const placesServiceRef = useRef(null);
 
-  // 決定要顯示哪個清單
   const isSearchMode = searchInput.trim().length > 0;
   const displayList = isSearchMode ? textSearchResults : aiRecommendations;
 
-  // --- Google Places Service Helper ---
   const runPlacesServiceRequest = useCallback((requestType, request) => {
       return new Promise((resolve, reject) => {
           if (!window.google || !window.google.maps.places || !window.google.maps.places.PlacesService) {
@@ -135,7 +131,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       });
   }, [mapInstance]);
 
-  // --- 1. 取得城市名稱 ---
   const fetchCityName = useCallback(async (lat, lng) => {
       if (!window.google || !window.google.maps.Geocoder) return "這個區域";
       const geocoder = new window.google.maps.Geocoder();
@@ -154,7 +149,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       return "這個區域";
   }, []);
 
-  // --- 2. 執行 AI 推薦 (取得清單 + Google Detail 補完) ---
   const fetchAIRecommendations = useCallback(async (filterType) => {
       if (!isMapScriptLoaded) return;
       setIsLoading(true);
@@ -167,17 +161,16 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
           const cityName = await fetchCityName(lat, lng);
           setCurrentCityName(cityName);
 
-          // 根據 Filter 調整 Prompt
           let typePrompt = "熱門旅遊景點、必吃餐廳或特色商家";
           if (filterType === 'food') typePrompt = "必吃美食、在地小吃、熱門餐廳";
           if (filterType === 'spot') typePrompt = "熱門旅遊景點、打卡地標、歷史古蹟";
           if (filterType === 'shopping') typePrompt = "購物中心、特色商店、伴手禮店";
           if (filterType === 'massage') typePrompt = "評價好的按摩店、SPA、放鬆場所";
           if (filterType === 'hotel') typePrompt = "特色住宿、熱門飯店";
-          if (filterType === 'bar') typePrompt = "熱門酒吧、夜店、居酒屋、特色調酒"; // 新增
-          if (filterType === 'temple') typePrompt = "知名寺廟、神社、教堂、宗教聖地"; // 新增
-          if (filterType === 'nature') typePrompt = "自然景觀、公園、登山步道、海灘"; // 新增
-          if (filterType === 'transport') typePrompt = "主要車站、交通樞紐、特色火車站"; // 新增
+          if (filterType === 'bar') typePrompt = "熱門酒吧、夜店、居酒屋、特色調酒";
+          if (filterType === 'temple') typePrompt = "知名寺廟、神社、教堂、宗教聖地";
+          if (filterType === 'nature') typePrompt = "自然景觀、公園、登山步道、海灘";
+          if (filterType === 'transport') typePrompt = "主要車站、交通樞紐、特色火車站";
 
           const prompt = `
               請針對「${cityName}」這個城市或區域，推薦 5 到 6 個${typePrompt}。
@@ -196,7 +189,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
           const jsonText = rawResponse.substring(startIndex, endIndex + 1);
           const aiItems = JSON.parse(jsonText);
 
-          // 將 AI 回傳的名稱拿去 Google Places API 搜尋詳細資料 (圖片、評分、座標)
           const enrichedItems = await Promise.all(aiItems.map(async (item) => {
               try {
                   const { results } = await runPlacesServiceRequest('textSearch', { query: `${cityName} ${item.name}` });
@@ -209,10 +201,15 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                           try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) {}
                       }
 
+                      // 【修復】建構 Google Maps URL 與 完整 ID
+                      const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
+
                       return {
                           id: `ai-${place.place_id}`,
+                          place_id: place.place_id, // 新增：保存原始 place_id
                           name: place.name,
                           rating: place.rating || 0,
+                          user_ratings_total: place.user_ratings_total || 0, // 新增：保存評論數
                           type: type,
                           tags: place.types ? place.types.slice(0, 3) : [],
                           image: place.photos?.[0]?.getUrl({maxWidth: 200, maxHeight: 200}) || PLACEHOLDER_IMAGE_URL,
@@ -222,7 +219,8 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                           },
                           priceLevel: place.price_level,
                           isOpen: isOpenStatus,
-                          aiReason: item.reason
+                          aiReason: item.reason,
+                          url: googleUrl // 新增：保存 Google Maps 連結
                       };
                   }
               } catch (e) {
@@ -241,7 +239,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       }
   }, [mapCenter, fetchCityName, runPlacesServiceRequest, isMapScriptLoaded]);
 
-  // --- 3. 處理一般搜尋 ---
   const handleSearch = useCallback(async (query) => {
       if (!isMapScriptLoaded) {
           setSearchError("SERVICE_UNAVAILABLE");
@@ -278,10 +275,15 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                       try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) {}
                   }
 
+                  // 【修復】建構 Google Maps URL 與 完整 ID
+                  const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
+
                   return {
                       id: `place-${place.place_id}`,
+                      place_id: place.place_id, // 新增
                       name: place.name,
                       rating: place.rating || 0,
+                      user_ratings_total: place.user_ratings_total || 0, // 新增
                       type: type,
                       tags: place.types ? place.types.slice(0, 3) : ['景點'],
                       image: place.photos?.[0]?.getUrl({maxWidth: 200, maxHeight: 200}) || PLACEHOLDER_IMAGE_URL,
@@ -291,6 +293,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                       },
                       priceLevel: place.price_level,
                       isOpen: isOpenStatus,
+                      url: googleUrl // 新增
                   };
               });
               setTextSearchResults(formattedResults);
@@ -309,7 +312,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       }
   }, [isMapScriptLoaded, runPlacesServiceRequest, mapInstance]);
 
-  // 當搜尋字串改變時的 Debounce
   useEffect(() => {
       const timer = setTimeout(() => {
           if (searchInput.trim()) {
@@ -321,7 +323,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       return () => clearTimeout(timer);
   }, [searchInput, handleSearch]);
 
-  // 初始化 & Filter 改變時執行 AI 推薦
   useEffect(() => {
       if (sidebarTab === 'search' && !searchInput.trim()) {
           fetchAIRecommendations(activeFilter);
@@ -343,7 +344,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
           </div>
          
           <div className="p-4 border-b border-gray-100">
-              {/* 搜尋框 */}
               <div className="relative mb-3">
                   <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
                   <input 
@@ -356,7 +356,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                   {isLoading && isSearchMode && <Loader2 size={16} className="absolute right-3 top-2.5 animate-spin text-teal-600"/>}
               </div>
 
-              {/* Tab 切換 */}
               <div className="flex bg-gray-100 p-1 rounded-lg">
                   <button 
                       onClick={() => setSidebarTab('search')} 
@@ -373,7 +372,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                   </button>
               </div>
 
-              {/* Filter Chips (修改：折行顯示 + 兩字標籤) */}
               {sidebarTab === 'search' && !isSearchMode && (
                   <div className="mt-3 flex flex-wrap gap-2 pb-1">
                       {CATEGORY_FILTERS.map(filter => {
@@ -400,7 +398,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                       {searchError === 'API_DENIED' && <div className="bg-red-50 p-3 rounded-lg text-xs text-red-700 mb-4 border border-red-200 flex items-start gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5"/><div><b>API 權限受限</b><br/>請檢查 API Key 設定。</div></div>}
                       {searchError === 'AI_ERROR' && <div className="bg-red-50 p-2 text-xs text-red-700 mb-2 rounded">AI 連線失敗，請稍後再試。</div>}
 
-                      {/* 模式 1: AI 推薦列表 */}
                       {!isSearchMode && (
                           <>
                               <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-3 rounded-lg text-xs text-indigo-900 mb-2 border border-indigo-100 flex items-center gap-2">
@@ -423,7 +420,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                           </>
                       )}
 
-                      {/* 模式 2: 搜尋結果列表 */}
                       {isSearchMode && (
                           <>
                               {displayList.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={false} isFav={myFavorites.some(f => f.id === item.id)} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} />)}
@@ -433,7 +429,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                   </>
               )}
 
-              {/* 收藏 Tab */}
               {sidebarTab === 'favorites' && myFavorites.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={true} isFav={true} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} />)}
               {sidebarTab === 'favorites' && myFavorites.length === 0 && <div className="text-center py-10 text-gray-400 text-xs"><p>還沒有收藏任何地點</p></div>}
           </div>
