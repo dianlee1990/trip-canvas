@@ -155,7 +155,6 @@ export default function AIGenerationModal({
       const daysToPlan = selectedDays.join('、');
       const favoriteNames = userFavorites.length > 0 ? userFavorites.map(f => f.name).join('、') : "無";
 
-      // 提取所有已存在的景點名稱，用於避免重複
       const allExistingNames = existingItinerary.map(item => item.name).join(', ');
 
       const flightOut = currentTrip?.flightOut || {};
@@ -186,7 +185,6 @@ export default function AIGenerationModal({
           timeConstraint = `(行程開始於 ${flightOut.time} 後)`;
         }
 
-        // --- 【核心修改：取得該日既有行程與空檔】 ---
         const currentDayItems = existingItinerary
             .filter(i => Number(i.day) === d.day)
             .sort((a, b) => {
@@ -219,8 +217,14 @@ export default function AIGenerationModal({
         你是一位旅遊規劃大師。請針對「${destination}」規劃第 [${daysToPlan}] 天行程。
 
         【最高優先級：住宿串聯與順路邏輯】
-        請務必根據以下每日的「起點」、「終點」以及「既有行程」來安排中間的景點，確保行程順暢，不要折返跑：
+        請務必根據以下每日的「起點」與「終點」來安排中間的景點，確保行程順暢，不要折返跑：
         ${hotelPrompt}
+
+        【移動日特別指令：A點到B點的沿途旅遊 (Critical)】
+        若當日的「起點」與「終點」不同（例如從 A城市 移動到 B城市）：
+        1. 該日行程 **必須** 呈現為「A點 -> 沿途景點 -> B點」的線性路徑。
+        2. 請根據地理位置，安排 **起點與終點之間** 的順路景點。
+        3. **嚴禁** 在起點附近玩完後直接瞬移到終點，也 **嚴禁** 快到終點了又折返回起點附近的景點。
 
         【強制規則：起訖點必列入】
         請務必將每日的「起點」與「終點」明確列入行程中，生成對應的 JSON 物件：
@@ -230,8 +234,7 @@ export default function AIGenerationModal({
         【三餐保障規則 (Critical)】
         AI 必須檢查每日行程是否包含早、中、晚三餐。
         1. **檢查現有行程**：若「既有行程」中已包含餐廳、夜市或標記為 'food' 的地點，則視為該餐已解決。
-        2. **補充缺漏**：若發現某餐（早餐 08:00-10:00、午餐 12:00-14:00、晚餐 18:00-20:00）有空檔且未安排，**必須** 插入一個推薦餐廳或特色小吃。
-        3. 請依據該日遊玩區域推薦順路美食。
+        2. **補充缺漏**：若發現某餐有空檔且未安排，**必須** 插入一個推薦餐廳或特色小吃。
 
         【最高優先級：營業時間與時段邏輯】
         請嚴格遵守各類型景點的營業時間，並反映在 "startTime" 欄位中：
@@ -244,11 +247,19 @@ export default function AIGenerationModal({
         - 風格：${stylesLabels}
         - 必遊/收藏(優先安排)：${favoriteNames}
         - 備註：${userNote || "無"}
-        - 全域避雷(已排過)：${allExistingNames} (請絕對避免重複這些地點)
+        - 全域避雷(已排過)：${allExistingNames}
 
-        【aiSummary 欄位撰寫規則】：
-        - 請生成約 30 字以內的精簡摘要，描述這個地點「主要特色」或「用途」。
-        - 禁止廢話。
+        【aiSummary 欄位撰寫規則 (Critical)】：
+        請先判斷地點性質，並嚴格遵守以下格式：
+        1. **若為具體單一地點 (如：餐廳、咖啡廳、單一商店、單一景點)**：
+           - 餐廳/咖啡廳：請直接寫出「必點：xxx、xxx」或「必喝：xxx」。
+           - 商店/伴手禮：請直接寫出「必買：xxx」。
+           - 景點：請直接寫出「必看：xxx」或其最大亮點。
+        2. **若為大範圍區域 (如：商圈、夜市、百貨公司)**：
+           - 請列出該範圍內「最熱門的 1-2 間商店、餐廳或景點名稱」。
+           - 範例：「擁有熱門的阿宗麵線與老天祿滷味」、「匯集了鼎泰豐與多個國際精品的購物中心」。
+        
+        請用繁體中文，控制在 30 字以內，不要有前言後語。
 
         【排程邏輯】
         1. 景點之間的移動必須合理。
