@@ -193,7 +193,7 @@ export default function MapZone({
       }
   }, [resolvedLocations, isInitialLoad, activeDay]);
 
-  // 【核心修復】監聽外部(Canvas/Sidebar)傳入的地點，若資料缺失則自動補全
+  // 【修復】移除 mapInstance 依賴，避免 ReferenceError
   useEffect(() => {
       if (!selectedPlace || !selectedPlace.lat || !selectedPlace.lng) return;
       
@@ -209,6 +209,7 @@ export default function MapZone({
 
       // 避免對 temp- 開頭的 ID 進行無效查詢
       const isTempId = rawPlaceId && (rawPlaceId.startsWith('temp-') || rawPlaceId.includes('lat-'));
+      // 這裡直接使用 mapRef.current 判斷，不依賴 mapInstance 變數
       const shouldFetchDetails = mapRef.current && rawPlaceId && !isTempId && (!selectedPlace.rating || !selectedPlace.user_ratings_total || !selectedPlace.url);
 
       const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}&query_place_id=${!isTempId ? rawPlaceId : ''}`;
@@ -276,7 +277,7 @@ export default function MapZone({
           setIsAnalyzing(false);
       }
 
-  }, [selectedPlace, mapInstance]); // 加入 mapInstance 依賴
+  }, [selectedPlace]); // 已移除 mapInstance
 
   const { mapElements, pathCoordinates, polylineKey } = useMemo(() => {
       const elements = [];
@@ -310,7 +311,6 @@ export default function MapZone({
                    let rawId = item.place_id || item.id;
                    if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
                    
-                   // 若是臨時 ID，不顯示 URL
                    const isTempId = rawId && (rawId.startsWith('temp-') || rawId.includes('lat-'));
                    const googleUrl = item.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${!isTempId ? rawId : ''}`;
 
@@ -328,7 +328,6 @@ export default function MapZone({
                        aiSummary: item.aiSummary
                    });
 
-                   // 針對行程點擊，同樣執行補全邏輯
                    if (mapRef.current && rawId && !isTempId && (!item.rating || !item.url || !item.user_ratings_total)) {
                        const service = new window.google.maps.places.PlacesService(mapRef.current);
                        service.getDetails({
@@ -375,7 +374,6 @@ export default function MapZone({
       return { mapElements: elements, pathCoordinates: path, polylineKey: currentPolylineKey };
   }, [resolvedLocations, sidebarTab, handleAddToItinerary, selectedPlace, activeDay]);
 
-  // 修改：若無評分，則顯示「在 Google 地圖上查看」
   const renderStars = (r, count) => {
       if (!r && !count) return <span>在 Google 地圖上查看</span>;
       return (
