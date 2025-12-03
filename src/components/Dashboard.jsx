@@ -227,12 +227,15 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
       const tripsRef = collection(db, 'artifacts', appId, 'trips');
       const newDocRef = doc(tripsRef);
 
-      const dbWriteTask = setDoc(newDocRef, tripData);
+      //const dbWriteTask = setDoc(newDocRef, tripData);
       // 設定 3 秒強制超時：如果 3 秒還沒寫完，我們就當作「成功」直接跳轉
-      const dbTimeoutTask = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 3000));
+      //const dbTimeoutTask = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 3000));
 
-      await Promise.race([dbWriteTask, dbTimeoutTask]);
-
+      //await Promise.race([dbWriteTask, dbTimeoutTask]);
+      // --- CTO 修正版：直接寫入，死就死給你看 ---
+        console.log("正在嘗試寫入 Firestore...", tripData);
+        await setDoc(newDocRef, tripData);
+        console.log("寫入成功！");
       // 5. 無論如何都跳轉
       setShowCreateModal(false);
       setNewTrip({
