@@ -57,35 +57,62 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   const searchWrapperRef = useRef(null);
 
   // 監聽行程列表
+  // 監聽行程列表
   useEffect(() => {
+    // 監視點 1：確認 useEffect 有沒有執行
+    console.log("Dashboard useEffect 啟動！");
+    
     if (!user) {
+      console.log("使用者尚未登入，停止讀取。");
       setTrips([]);
       setLoading(false);
       return;
     }
+
+    console.log("使用者 ID:", user.uid);
+    console.log("App ID:", appId);
+
     // 改為查詢全域 trips，條件是 collaborators 包含自己
     const tripsRef = collection(db, 'artifacts', appId, 'trips');
     
-    // --- 【重要修正】暫時移除 orderBy 以避免索引錯誤 ---
-    // 等你確認功能正常後，可以再去 Firebase 建立索引並把 orderBy 加回來
-    const q = query(
-      tripsRef, 
-      where('collaborators', 'array-contains', user.uid)
-      // orderBy('updatedAt', 'desc') 
-    );
+    // --- 監視點 2：印出查詢條件 ---
+    console.log("準備查詢資料庫路徑:", `artifacts/${appId}/trips`);
+    
+    // 我們先把 query 簡化到最極致，只查「所有行程」，不設條件
+    // 這樣可以排除是 where 條件寫錯導致的問題
+    // const q = query(
+    //   tripsRef, 
+    //   where('collaborators', 'array-contains', user.uid)
+    // );
+    
+    // 👇 測試用：直接抓取該路徑下所有資料 (暫時拿掉 where)
+    const q = tripsRef; 
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      // 監視點 3：資料庫回應了！
+      console.log("資料庫回應了！文件數量:", snapshot.size);
+      
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // 在前端手動排序 (因為資料量不大，這樣比較安全)
-      tripList.sort((a, b) => {
+      console.log("讀取到的行程:", tripList);
+
+      // 前端過濾 (因為我們暫時拿掉了後端查詢條件)
+      const myTrips = tripList.filter(t => 
+        t.collaborators && t.collaborators.includes(user.uid)
+      );
+      
+      // 手動排序
+      myTrips.sort((a, b) => {
           const timeA = a.updatedAt?.seconds || 0;
           const timeB = b.updatedAt?.seconds || 0;
-          return timeB - timeA; // 新的在前
+          return timeB - timeA; 
       });
-      setTrips(tripList);
+
+      setTrips(myTrips);
       setLoading(false);
     }, (error) => {
-      console.error("Fetch trips error:", error);
+      // 監視點 4：發生錯誤
+      console.error("Fetch trips error 發生錯誤:", error);
+      alert("讀取失敗：" + error.message);
       setLoading(false);
     });
     return () => unsubscribe();
