@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
@@ -15,12 +15,15 @@ const firebaseConfig = {
   measurementId: "G-PL6300GNHL"
 };
 
-// --- 間諜程式碼 (核彈級測試) ---
+// --- 間諜程式碼 ---
 console.log("=== 核彈級測試 ===");
-console.log("正在連線到 Project ID:", firebaseConfig.projectId);
-console.log("===================");
+console.log("Project ID:", firebaseConfig.projectId);
+// ----------------
 
-const app = initializeApp(firebaseConfig);
+// 🛠️ 防呆機制：檢查是否已經啟動過
+// 如果 getApps().length > 0 代表已經有啟動的 App，直接拿來用 (getApp)
+// 否則才執行 initializeApp
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
