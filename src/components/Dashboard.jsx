@@ -236,7 +236,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
 
       //await Promise.race([dbWriteTask, dbTimeoutTask]);
       // --- CTO 修正版：直接寫入，死就死給你看 ---
-        console.log("正在嘗試寫入 Firestore...", tripData);
+      console.log("正在嘗試寫入 Firestore (已修正時間格式)...", tripData);
         // --- CTO 檢查點：抓出 undefined ---
         const cleanData = JSON.parse(JSON.stringify(tripData)); // 這招可以過濾掉 undefined
         Object.keys(tripData).forEach(key => {
