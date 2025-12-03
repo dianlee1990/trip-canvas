@@ -234,6 +234,17 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
       //await Promise.race([dbWriteTask, dbTimeoutTask]);
       // --- CTO 修正版：直接寫入，死就死給你看 ---
         console.log("正在嘗試寫入 Firestore...", tripData);
+        // --- CTO 檢查點：抓出 undefined ---
+        const cleanData = JSON.parse(JSON.stringify(tripData)); // 這招可以過濾掉 undefined
+        Object.keys(tripData).forEach(key => {
+        if (tripData[key] === undefined) {
+            console.error(`🚨 抓到了！欄位 [${key}] 是 undefined，這會導致 Firestore 卡死！`);
+            alert(`欄位 [${key}] 資料有誤，請檢查程式碼！`);
+            throw new Error("Data contains undefined"); // 強制停止
+        }
+        });
+
+        // 原本的寫入
         await setDoc(newDocRef, tripData);
         console.log("寫入成功！");
       // 5. 無論如何都跳轉
