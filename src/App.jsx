@@ -3,7 +3,8 @@ import { useJsApiLoader } from '@react-google-maps/api';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, orderBy, query, writeBatch } from 'firebase/firestore';
+// 👇 1. 這裡加入了 arrayUnion
+import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, orderBy, query, writeBatch, arrayUnion } from 'firebase/firestore';
 import { auth, db } from './utils/firebase';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom';
 import { Layout, List, Map as MapIcon, ChevronLeft, Users } from 'lucide-react';
@@ -103,19 +104,34 @@ const EditorPage = ({ isLoaded, user }) => {
   const [mobileTab, setMobileTab] = useState('canvas'); 
   const [showShareModal, setShowShareModal] = useState(false);
 
-  // 1. 抓取 Trip
+  // 👇 2. 核心修改：抓取 Trip 並處理自動加入邏輯
   useEffect(() => {
     if (!tripId || !user) return;
     setTripLoading(true);
     const tripRef = doc(db, 'artifacts', appId, 'trips', tripId);
-    const unsubscribe = onSnapshot(tripRef, (docSnap) => {
+    
+    // 注意這裡加了 async
+    const unsubscribe = onSnapshot(tripRef, async (docSnap) => { 
       if (docSnap.exists()) {
         const data = docSnap.data();
+        
+        // 🛠️ 自動加入邏輯：如果登入者不在名單內，直接加進去！
         if (data.collaborators && !data.collaborators.includes(user.uid)) {
-          setError("您沒有權限編輯此行程");
-          setTripLoading(false);
-          return;
+          console.log("發現新朋友！正在將您加入協作者名單...");
+          try {
+            await updateDoc(tripRef, {
+              collaborators: arrayUnion(user.uid)
+            });
+            // 更新後會觸發 snapshot 重新執行，自然會跑到下面的 setCurrentTrip
+          } catch (err) {
+            console.error("自動加入失敗:", err);
+            setError("無法加入此行程，請聯繫擁有者。");
+            setTripLoading(false);
+          }
+          return; // 先中斷，等待更新後的下一次 snapshot
         }
+
+        // 正常的讀取邏輯 (已在名單內)
         setCurrentTrip({ id: docSnap.id, ...data });
         if (data.center) setMapCenter(data.center);
         setTripLoading(false);
@@ -250,10 +266,10 @@ const EditorPage = ({ isLoaded, user }) => {
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col h-[100dvh] w-full overflow-hidden font-sans relative bg-gray-50">
         
+        {/* 主要工作區 */}
         <div className="flex-1 flex overflow-hidden relative w-full">
           
           {/* 左側 Sidebar */}
-          {/* 🟢 修改點：加入 [&>aside]:!w-full [&>aside]:!min-w-0 強制 Sidebar 寬度為 100% */}
           <div className={`${mobileTab === 'list' ? 'flex flex-col w-full' : 'hidden'} md:block md:w-1/4 md:min-w-[320px] h-full z-30 overflow-hidden [&>aside]:!w-full [&>aside]:!min-w-0`}>
             <Sidebar 
               sidebarTab={sidebarTab} setSidebarTab={setSidebarTab} 
@@ -286,7 +302,6 @@ const EditorPage = ({ isLoaded, user }) => {
           </div>
 
           {/* 右側 MapZone */}
-          {/* 🟢 修改點：加入 [&>aside]:!flex [&>aside]:!w-full [&>aside]:!h-full 強制 MapZone 顯示 */}
           <div className={`${mobileTab === 'map' ? 'flex w-full' : 'hidden'} md:block md:flex-1 h-full z-10`}>
              <div className="w-full h-full [&>aside]:!flex [&>aside]:!w-full [&>aside]:!max-w-none [&>aside]:!h-full">
                 <MapZone 
