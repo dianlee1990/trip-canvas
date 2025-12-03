@@ -277,7 +277,7 @@ const EditorPage = ({ isLoaded, user }) => {
           </div>
 
           {/* 中間 Canvas */}
-          {/* 🟢 修改點：電腦版固定寬度 md:w-[28rem] (約450px) 且禁止壓縮 md:shrink-0，讓右側地圖貼緊 */}
+          {/* 🟢 修正：移除 flex-col wrapper 內的 overflow 設定，交給 Canvas 自己處理 */}
           <div className={`${mobileTab === 'canvas' ? 'flex flex-col w-full' : 'hidden'} md:block md:w-[28rem] md:shrink-0 h-full z-20 overflow-hidden`}>
             <div className="md:hidden bg-white border-b p-3 flex justify-between items-center shrink-0 shadow-sm z-50">
                <button onClick={() => navigate('/')} className="text-gray-500 p-1"><ChevronLeft size={24}/></button>
@@ -285,21 +285,18 @@ const EditorPage = ({ isLoaded, user }) => {
                <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Users size={20}/></button>
             </div>
             
-            <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-              <Canvas 
-                activeDay={activeDay} setActiveDay={setActiveDay} 
-                currentTrip={currentTrip} handleUpdateTrip={handleUpdateTrip} 
-                itinerary={itinerary} isGenerating={isGenerating} aiStatus={aiStatus} 
-                setIsAIModalOpen={setIsAIModalOpen} handleRemoveFromItinerary={handleRemoveFromItinerary} 
-                onPlaceSelect={handlePlaceSelect} onBack={() => navigate('/')} 
-                handleUpdateItem={handleUpdateItem} 
-              />
-              <div className="h-24 md:hidden"></div>
-            </div>
+            {/* 這裡只要單純 render Canvas 即可，它已經是 w-full h-full */}
+            <Canvas 
+              activeDay={activeDay} setActiveDay={setActiveDay} 
+              currentTrip={currentTrip} handleUpdateTrip={handleUpdateTrip} 
+              itinerary={itinerary} isGenerating={isGenerating} aiStatus={aiStatus} 
+              setIsAIModalOpen={setIsAIModalOpen} handleRemoveFromItinerary={handleRemoveFromItinerary} 
+              onPlaceSelect={handlePlaceSelect} onBack={() => navigate('/')} 
+              handleUpdateItem={handleUpdateItem} 
+            />
           </div>
 
           {/* 右側 MapZone */}
-          {/* 🟢 因為中間欄位現在是固定寬度，這裡的 flex-1 會讓地圖自動填滿剩下的所有空間 (消除空白) */}
           <div className={`${mobileTab === 'map' ? 'flex w-full' : 'hidden'} md:block md:flex-1 h-full z-10`}>
              <div className="w-full h-full [&>aside]:!flex [&>aside]:!w-full [&>aside]:!max-w-none [&>aside]:!h-full">
                 <MapZone 

@@ -144,33 +144,27 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
   );
 };
 
-// --- 【修正】加入 isSaving 狀態與 Loading 顯示 ---
 const DateEditor = ({ startDate, endDate, onSave, onCancel, isSaving }) => {
   const [start, setStart] = useState(startDate || '');
   const [end, setEnd] = useState(endDate || '');
-  
   return (
     <div className="absolute top-12 left-0 bg-white p-4 rounded-xl shadow-xl border border-gray-200 z-50 w-72 animate-in fade-in zoom-in">
       <h4 className="font-bold text-gray-800 mb-3 text-sm">修改旅遊日期</h4>
       <div className="space-y-3">
         <div className="space-y-1">
-            <label className="text-xs text-gray-500">開始日期</label>
-            <input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full text-sm border p-2 rounded-lg outline-none focus:border-teal-500" />
+          <label className="text-xs text-gray-500">開始日期</label>
+          <input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full text-sm border p-2 rounded-lg outline-none focus:border-teal-500" />
         </div>
         <div className="space-y-1">
-            <label className="text-xs text-gray-500">結束日期</label>
-            <input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full text-sm border p-2 rounded-lg outline-none focus:border-teal-500" />
+          <label className="text-xs text-gray-500">結束日期</label>
+          <input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full text-sm border p-2 rounded-lg outline-none focus:border-teal-500" />
         </div>
       </div>
       <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
         <button onClick={onCancel} disabled={isSaving} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"><X size={16} /></button>
-        <button 
-            onClick={() => onSave(start, end)} 
-            disabled={isSaving || !start || !end}
-            className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-        >
-            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {isSaving ? '儲存中...' : '儲存'}
+        <button onClick={() => onSave(start, end)} disabled={isSaving || !start || !end} className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+          {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          {isSaving ? '儲存中...' : '儲存'}
         </button>
       </div>
     </div>
@@ -180,7 +174,6 @@ const DateEditor = ({ startDate, endDate, onSave, onCancel, isSaving }) => {
 export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpdateTrip, itinerary, isGenerating, aiStatus, setIsAIModalOpen, handleRemoveFromItinerary, onPlaceSelect, onBack, handleUpdateItem }) {
   const { setNodeRef } = useDroppable({ id: 'canvas-drop-zone' });
   const [isEditingDate, setIsEditingDate] = useState(false);
-  // 新增儲存狀態
   const [isSavingDate, setIsSavingDate] = useState(false);
 
   const { totalDays, currentDateDisplay } = useMemo(() => {
@@ -193,39 +186,34 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
     return { totalDays: diffDays > 0 ? diffDays : 1, currentDateDisplay: current.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'short' }) };
   }, [currentTrip, activeDay]);
 
-  // --- 【修正】加入 timeout 保護與錯誤處理 ---
   const handleSaveDate = async (newStart, newEnd) => {
     if (newStart > newEnd) return alert("結束日期不能早於開始日期");
-    
     setIsSavingDate(true);
     try {
-        // 設定 5 秒超時：若資料庫太慢，強制通過
-        const updateTask = handleUpdateTrip({ startDate: newStart, endDate: newEnd });
-        const timeoutTask = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 5000));
-        
-        await Promise.race([updateTask, timeoutTask]);
-        
-        setIsEditingDate(false);
-        setActiveDay(1); // 重置為第一天，避免天數減少導致顯示錯誤
+      const updateTask = handleUpdateTrip({ startDate: newStart, endDate: newEnd });
+      const timeoutTask = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 5000));
+      await Promise.race([updateTask, timeoutTask]);
+      setIsEditingDate(false);
+      setActiveDay(1);
     } catch (error) {
-        if (error.message === "TIMEOUT") {
-             // 樂觀模式：假設背景會同步成功
-             alert("網路連線較慢，將在背景儲存日期設定。");
-             setIsEditingDate(false);
-             setActiveDay(1);
-        } else {
-             console.error("Save date error:", error);
-             alert("儲存日期失敗，請檢查網路連線。");
-        }
+      if (error.message === "TIMEOUT") {
+        alert("網路連線較慢，將在背景儲存日期設定。");
+        setIsEditingDate(false);
+        setActiveDay(1);
+      } else {
+        console.error("Save date error:", error);
+        alert("儲存日期失敗，請檢查網路連線。");
+      }
     } finally {
-        setIsSavingDate(false);
+      setIsSavingDate(false);
     }
   };
 
   const currentDayItems = useMemo(() => itinerary.filter(item => !item.day || item.day === activeDay), [itinerary, activeDay]);
 
   return (
-    <div ref={setNodeRef} className="flex-1 max-w-md bg-white flex flex-col relative z-10 shadow-xl border-r border-gray-200">
+    // 🟢 修改點 1: 移除 max-w-md，改為 w-full，讓它填滿父容器 (28rem)。移除 shadow-xl。
+    <div ref={setNodeRef} className="flex-1 w-full bg-white flex flex-col relative z-10 border-r border-gray-200 h-full">
       <div className="p-4 border-b border-gray-100 bg-white sticky top-0 z-20">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -245,36 +233,39 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
             </div>
             <span className="text-xs text-gray-500 font-medium">{currentDateDisplay}</span>
             {isEditingDate && (
-                <DateEditor 
-                    startDate={currentTrip?.startDate} 
-                    endDate={currentTrip?.endDate} 
-                    onSave={handleSaveDate} 
-                    onCancel={() => setIsEditingDate(false)}
-                    isSaving={isSavingDate}
-                />
+              <DateEditor
+                startDate={currentTrip?.startDate}
+                endDate={currentTrip?.endDate}
+                onSave={handleSaveDate}
+                onCancel={() => setIsEditingDate(false)}
+                isSaving={isSavingDate}
+              />
             )}
           </div>
           <button onClick={() => setActiveDay(p => p + 1)} disabled={activeDay >= totalDays} className="p-1 rounded-lg hover:bg-white disabled:opacity-30"><ChevronRight size={20} /></button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-50/50">
+      {/* 🟢 修改點 2: 加入 pb-24 md:pb-4，這讓手機版底部留白，電腦版正常。 */}
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-50/50 pb-24 md:pb-4">
         {isGenerating && <div className="flex flex-col items-center justify-center py-10 space-y-4"><Loader2 className="animate-spin text-purple-600" size={32} /><p className="text-sm font-medium text-purple-700">{aiStatus}</p></div>}
         {!isGenerating && currentDayItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl m-4"><MapPin size={32} className="mb-2 opacity-50" /><p className="text-sm">Day {activeDay} 尚無行程</p></div>
         ) : (
           <SortableContext items={currentDayItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
-            <div className="pb-20">{currentDayItems.map((item, index) => (
-              <SortableTripItem
-                key={item.id}
-                index={index}
-                item={item}
-                onRemove={handleRemoveFromItinerary}
-                onPlaceSelect={onPlaceSelect}
-                onUpdateItem={handleUpdateItem}
-                isGenerating={isGenerating}
-              />
-            ))}</div>
+            <div className="pb-4">
+              {currentDayItems.map((item, index) => (
+                <SortableTripItem
+                  key={item.id}
+                  index={index}
+                  item={item}
+                  onRemove={handleRemoveFromItinerary}
+                  onPlaceSelect={onPlaceSelect}
+                  onUpdateItem={handleUpdateItem}
+                  isGenerating={isGenerating}
+                />
+              ))}
+            </div>
           </SortableContext>
         )}
       </div>
