@@ -16,13 +16,23 @@ const firebaseConfig = {
 
 // --- 間諜程式碼 ---
 console.log("=== 核彈級測試 ===");
-console.log("Project ID:", firebaseConfig.projectId);
-// ----------------
-
-// 🛠️ 防呆機制：檢查是否已經啟動過
-// 如果 getApps().length > 0 代表已經有啟動的 App，直接拿來用 (getApp)
-// 否則才執行 initializeApp
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// 🛠️ 終極防呆：Try-Catch 初始化
+let app;
+try {
+  // 嘗試直接初始化
+  app = initializeApp(firebaseConfig);
+  console.log("Firebase App 初始化成功！");
+} catch (error) {
+  // 如果報錯說「已經存在」，那我們就直接拿現有的來用
+  if (error.code === 'app/duplicate-app') {
+    console.log("Firebase App 已經存在，直接使用現有實例。");
+    app = getApp();
+  } else {
+    // 其他錯誤則印出來
+    console.error("Firebase 初始化發生未知錯誤:", error);
+    throw error;
+  }
+}
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
