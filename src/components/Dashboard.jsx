@@ -95,7 +95,19 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   }, []);
 
   const handleLogin = async () => {
-    try { await signInWithPopup(auth, googleProvider); } catch (error) { console.error("Login failed:", error); }
+    console.log("🚀 嘗試登入...", { auth, googleProvider }); // 檢查這兩個物件是否存在
+    if (!auth) {
+      alert("Firebase Auth 未初始化，請檢查 firebase.js");
+      return;
+    }
+    try { 
+      const result = await signInWithPopup(auth, googleProvider); 
+      console.log("✅ 登入成功！User:", result.user);
+    } catch (error) { 
+      console.error("❌ Login failed 詳細錯誤:", error); 
+      // 顯示更詳細的錯誤碼，幫我們判斷是 config 錯還是 key 錯
+      alert(`登入失敗 (${error.code}): ${error.message}`);
+    }
   };
 
   const handleDestinationChange = (e) => {
