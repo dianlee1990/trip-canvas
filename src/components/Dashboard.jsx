@@ -2,36 +2,28 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, LogOut, Map as MapIcon, Calendar,
   ArrowRight, Loader2, User, MapPin, X,
-  Plane, Globe
+  Plane, Globe, Users, Edit3 // 新增 Users, Edit3
 } from 'lucide-react';
 import {
-  collection, doc, setDoc, query, orderBy, onSnapshot,
-//  serverTimestamp, where
+  collection, doc, setDoc, updateDoc, onSnapshot // 新增 updateDoc
 } from 'firebase/firestore';
 import { signInWithPopup, signOut } from 'firebase/auth';
-// 請確認你的 firebase 設定檔路徑是否正確
 import { db, auth, googleProvider } from '../utils/firebase';
 import { useNavigate } from 'react-router-dom';
+import ShareModal from './modals/ShareModal'; // 記得確認路徑正確
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 const POPULAR_DESTINATIONS = [
   { name: "Taipei, Taiwan", label: "台北, 台灣", keywords: ["taipei", "台北", "taiwan"], lat: 25.0330, lng: 121.5654 },
-  { name: "Tainan, Taiwan", label: "台南, 台灣", keywords: ["tainan", "台南", "taiwan"], lat: 22.9997, lng: 120.2270 },
   { name: "Tokyo, Japan", label: "東京, 日本", keywords: ["tokyo", "東京", "japan"], lat: 35.6762, lng: 139.6503 },
   { name: "Osaka, Japan", label: "大阪, 日本", keywords: ["osaka", "大阪"], lat: 34.6937, lng: 135.5023 },
   { name: "Kyoto, Japan", label: "京都, 日本", keywords: ["kyoto", "京都"], lat: 35.0116, lng: 135.7681 },
   { name: "Seoul, South Korea", label: "首爾, 韓國", keywords: ["seoul", "首爾", "korea"], lat: 37.5665, lng: 126.9780 },
   { name: "Bangkok, Thailand", label: "曼谷, 泰國", keywords: ["bangkok", "曼谷", "thailand"], lat: 13.7563, lng: 100.5018 },
-  { name: "Singapore", label: "新加坡", keywords: ["singapore", "新加坡"], lat: 1.3521, lng: 103.8198 },
-  { name: "Hong Kong", label: "香港", keywords: ["hong kong", "香港"], lat: 22.3193, lng: 114.1694 },
   { name: "London, UK", label: "倫敦, 英國", keywords: ["london", "倫敦", "uk"], lat: 51.5074, lng: -0.1278 },
   { name: "Paris, France", label: "巴黎, 法國", keywords: ["paris", "巴黎", "france"], lat: 48.8566, lng: 2.3522 },
   { name: "New York, USA", label: "紐約, 美國", keywords: ["new york", "紐約", "usa"], lat: 40.7128, lng: -74.0060 },
-  { name: "Los Angeles, USA", label: "洛杉磯, 美國", keywords: ["los angeles", "洛杉磯", "la"], lat: 34.0522, lng: -118.2437 },
-  { name: "Sydney, Australia", label: "雪梨, 澳洲", keywords: ["sydney", "雪梨", "澳洲"], lat: -33.8688, lng: 151.2093 },
-  { name: "Hokkaido, Japan", label: "北海道, 日本", keywords: ["hokkaido", "北海道"], lat: 43.2203, lng: 142.8635 },
-  { name: "Okinawa, Japan", label: "沖繩, 日本", keywords: ["okinawa", "沖繩"], lat: 26.2124, lng: 127.6809 }
 ];
 
 export default function Dashboard({ user, isMapScriptLoaded }) {
@@ -41,7 +33,10 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
 
-  // 新行程表單
+  // 狀態：編輯模式與分享視窗
+  const [editingId, setEditingId] = useState(null); 
+  const [shareModalData, setShareModalData] = useState(null);
+
   const [newTrip, setNewTrip] = useState({
     title: '',
     destination: '',
@@ -57,68 +52,38 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   const searchWrapperRef = useRef(null);
 
   // 監聽行程列表
-  // 監聽行程列表
   useEffect(() => {
-    // 監視點 1：確認 useEffect 有沒有執行
-    console.log("Dashboard useEffect 啟動！");
-    
     if (!user) {
-      console.log("使用者尚未登入，停止讀取。");
       setTrips([]);
       setLoading(false);
       return;
     }
-
-    console.log("使用者 ID:", user.uid);
-    console.log("App ID:", appId);
-
-    // 改為查詢全域 trips，條件是 collaborators 包含自己
     const tripsRef = collection(db, 'artifacts', appId, 'trips');
-    
-    // --- 監視點 2：印出查詢條件 ---
-    console.log("準備查詢資料庫路徑:", `artifacts/${appId}/trips`);
-    
-    // 我們先把 query 簡化到最極致，只查「所有行程」，不設條件
-    // 這樣可以排除是 where 條件寫錯導致的問題
-    // const q = query(
-    //   tripsRef, 
-    //   where('collaborators', 'array-contains', user.uid)
-    // );
-    
-    // 👇 測試用：直接抓取該路徑下所有資料 (暫時拿掉 where)
-    const q = tripsRef; 
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      // 監視點 3：資料庫回應了！
-      console.log("資料庫回應了！文件數量:", snapshot.size);
-      
+    const unsubscribe = onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      console.log("讀取到的行程:", tripList);
-
-      // 前端過濾 (因為我們暫時拿掉了後端查詢條件)
-      const myTrips = tripList.filter(t => 
+      
+      // 前端過濾：只顯示我是協作者的行程
+      const myTrips = tripList.filter(t =>
         t.collaborators && t.collaborators.includes(user.uid)
       );
-      
-      // 手動排序
+
+      // 排序：新的在前
       myTrips.sort((a, b) => {
-          const timeA = a.updatedAt?.seconds || 0;
-          const timeB = b.updatedAt?.seconds || 0;
-          return timeB - timeA; 
+        const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return timeB - timeA;
       });
 
       setTrips(myTrips);
       setLoading(false);
     }, (error) => {
-      // 監視點 4：發生錯誤
-      console.error("Fetch trips error 發生錯誤:", error);
-      alert("讀取失敗：" + error.message);
+      console.error("Fetch trips error:", error);
       setLoading(false);
     });
     return () => unsubscribe();
   }, [user]);
 
-  // 點擊外部關閉建議選單
+  // 關閉建議選單
   useEffect(() => {
     function handleClickOutside(event) {
       if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
@@ -154,20 +119,34 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     setShowSuggestions(false);
   };
 
-  const handleCreateTrip = async () => {
-    console.log("🚀 CTO 版本檢查：我是最新版！現在時間是字串！");
+  // 開啟編輯模式
+  const handleEditClick = (trip) => {
+    setNewTrip({
+      title: trip.title,
+      destination: trip.destination,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      preSelectedCenter: trip.center,
+      flightOut: trip.flightOut || { airport: '', time: '' },
+      flightIn: trip.flightIn || { airport: '', time: '' }
+    });
+    setEditingId(trip.id);
+    setShowCreateModal(true);
+  };
+
+  // 建立或更新行程
+  const handleSaveTrip = async () => {
     if (!newTrip.title || !newTrip.destination) {
       alert("請填寫行程名稱與目的地");
       return;
     }
-
     setIsCreating(true);
-
-    // 1. 準備預設座標 (Fallback)
+    
+    // 預設座標
     let finalCenter = { lat: 35.6762, lng: 139.6503 };
 
     try {
-      // 2. 嘗試取得座標 (Geocoding)
+      // 嘗試 Geocoding (如果使用者改了目的地)
       if (newTrip.preSelectedCenter) {
         finalCenter = {
           lat: Number(newTrip.preSelectedCenter.lat),
@@ -180,98 +159,75 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
             geocoder.geocode({ address: newTrip.destination }, (results, status) => {
               if (status === 'OK' && results[0] && results[0].geometry) {
                 const loc = results[0].geometry.location;
-                resolve({
-                  lat: typeof loc.lat === 'function' ? loc.lat() : loc.lat,
-                  lng: typeof loc.lng === 'function' ? loc.lng() : loc.lng
-                });
+                resolve({ lat: loc.lat(), lng: loc.lng() });
               } else {
                 resolve(null);
               }
             });
           });
-          const timeoutTask = new Promise((resolve) => setTimeout(() => resolve(null), 1500));
-          const result = await Promise.race([geocodeTask, timeoutTask]);
-
-          if (result) {
-            finalCenter = { lat: Number(result.lat), lng: Number(result.lng) };
-          }
-        } catch (geoError) {
-          console.error("Geocoding error (ignored):", geoError);
-        }
+          const result = await Promise.race([geocodeTask, new Promise(r => setTimeout(() => r(null), 1000))]);
+          if (result) finalCenter = result;
+        } catch (e) { console.error("Geo error", e); }
       }
+
       const nowISO = new Date().toISOString();
-      // 3. 準備寫入資料
+
       const tripData = {
         title: newTrip.title || "未命名行程",
         destination: newTrip.destination || "未知目的地",
         startDate: newTrip.startDate || "",
         endDate: newTrip.endDate || "",
-        center: {
-            lat: finalCenter.lat || 35.6762,
-            lng: finalCenter.lng || 139.6503
-        },
-        flightOut: {
-            airport: newTrip.flightOut.airport || "",
-            time: newTrip.flightOut.time || ""
-        },
-        flightIn: {
-            airport: newTrip.flightIn.airport || "",
-            time: newTrip.flightIn.time || ""
-        },
-        ownerId: user.uid,
-        collaborators: [user.uid],
-        // 👇 改用單純的字串，不再依賴伺服器運算
-        createdAt: nowISO, 
+        center: finalCenter,
+        flightOut: newTrip.flightOut,
+        flightIn: newTrip.flightIn,
         updatedAt: nowISO
-        //createdAt: serverTimestamp(),
-        //updatedAt: serverTimestamp()
       };
 
-      // 4. 寫入 Firestore - 【樂觀模式】
-      const tripsRef = collection(db, 'artifacts', appId, 'trips');
-      const newDocRef = doc(tripsRef);
+      if (editingId) {
+        // --- 更新模式 ---
+        console.log("正在更新行程...", editingId);
+        const tripRef = doc(db, 'artifacts', appId, 'trips', editingId);
+        await updateDoc(tripRef, tripData);
+        console.log("更新成功！");
+        setShowCreateModal(false); // 更新完只關閉視窗，不跳轉
+      } else {
+        // --- 建立模式 ---
+        console.log("正在建立新行程...");
+        const fullData = {
+          ...tripData,
+          ownerId: user.uid,
+          collaborators: [user.uid],
+          createdAt: nowISO,
+        };
+        const tripsRef = collection(db, 'artifacts', appId, 'trips');
+        const newDocRef = doc(tripsRef);
+        
+        // 檢查 undefined
+        const cleanData = JSON.parse(JSON.stringify(fullData));
+        await setDoc(newDocRef, cleanData);
+        
+        console.log("建立成功！");
+        setShowCreateModal(false);
+        navigate(`/trip/${newDocRef.id}`); // 建立完跳轉
+      }
 
-      //const dbWriteTask = setDoc(newDocRef, tripData);
-      // 設定 3 秒強制超時：如果 3 秒還沒寫完，我們就當作「成功」直接跳轉
-      //const dbTimeoutTask = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 3000));
-
-      //await Promise.race([dbWriteTask, dbTimeoutTask]);
-      // --- CTO 修正版：直接寫入，死就死給你看 ---
-      console.log("正在嘗試寫入 Firestore (已修正時間格式)...", tripData);
-        // --- CTO 檢查點：抓出 undefined ---
-        const cleanData = JSON.parse(JSON.stringify(tripData)); // 這招可以過濾掉 undefined
-        Object.keys(tripData).forEach(key => {
-        if (tripData[key] === undefined) {
-            console.error(`🚨 抓到了！欄位 [${key}] 是 undefined，這會導致 Firestore 卡死！`);
-            alert(`欄位 [${key}] 資料有誤，請檢查程式碼！`);
-            throw new Error("Data contains undefined"); // 強制停止
-        }
-        });
-
-        // 原本的寫入
-        await setDoc(newDocRef, tripData);
-        console.log("寫入成功！");
-      // 5. 無論如何都跳轉
-      setShowCreateModal(false);
+      // 重置表單
       setNewTrip({
         title: '', destination: '', startDate: '', endDate: '', preSelectedCenter: null,
         flightOut: { airport: '', time: '' }, flightIn: { airport: '', time: '' }
       });
-
-      // 使用 URL 導航跳轉
-      navigate(`/trip/${newDocRef.id}`);
+      setEditingId(null);
 
     } catch (error) {
-      console.error("Critical Creation Error:", error);
-      alert(`建立失敗: ${error.message}\n請檢查網路連線或稍後再試。`);
+      console.error("Save Error:", error);
+      alert(`儲存失敗: ${error.message}`);
     } finally {
-      if (setIsCreating) setIsCreating(false);
+      setIsCreating(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2">
           <div className="bg-teal-600 p-1.5 rounded-lg">
@@ -309,19 +265,41 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
           <div>
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-2xl font-bold text-gray-800 border-l-4 border-teal-500 pl-3">我的行程</h2>
-              <button onClick={() => setShowCreateModal(true)} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow hover:shadow-md"><Plus size={18} /> 建立新行程</button>
+              <button onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow hover:shadow-md"><Plus size={18} /> 建立新行程</button>
             </div>
 
             {loading ? (
               <div className="flex justify-center py-20"><Loader2 className="animate-spin text-teal-600" size={32} /></div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div onClick={() => setShowCreateModal(true)} className="border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center p-8 cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all group min-h-[220px]">
+                <div onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center p-8 cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all group min-h-[220px]">
                   <div className="w-14 h-14 rounded-full bg-gray-100 group-hover:bg-teal-200 flex items-center justify-center mb-4 transition-colors"><Plus className="text-gray-400 group-hover:text-teal-700" size={28} /></div>
                   <span className="font-bold text-gray-500 group-hover:text-teal-700 text-lg">新增行程</span>
                 </div>
                 {trips.map(trip => (
-                  <div key={trip.id} onClick={() => navigate(`/trip/${trip.id}`)} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer overflow-hidden group flex flex-col relative">
+                  <div key={trip.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden group flex flex-col relative"
+                       onClick={() => navigate(`/trip/${trip.id}`)}>
+                    
+                    {/* 操作按鈕 (懸浮顯示) */}
+                    <div className="absolute top-3 right-3 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setShareModalData(trip); }}
+                        className="bg-white/90 p-2 rounded-full shadow hover:text-teal-600 text-gray-500 hover:scale-110 transition-all"
+                        title="成員與邀請"
+                      >
+                        <Users size={18} />
+                      </button>
+                      {trip.ownerId === user.uid && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleEditClick(trip); }}
+                          className="bg-white/90 p-2 rounded-full shadow hover:text-blue-600 text-gray-500 hover:scale-110 transition-all"
+                          title="編輯行程資訊"
+                        >
+                          <Edit3 size={18} />
+                        </button>
+                      )}
+                    </div>
+
                     <div className="h-32 bg-gradient-to-r from-teal-500 to-cyan-600 relative overflow-hidden">
                       <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/20 rounded-full blur-xl"></div>
                       <div className="absolute -left-4 -bottom-4 w-20 h-20 bg-black/10 rounded-full blur-lg"></div>
@@ -329,8 +307,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
                     </div>
                     <div className="p-5 flex-1 flex flex-col">
                       <h4 className="text-lg font-bold text-gray-800 mb-2 group-hover:text-teal-600 transition-colors line-clamp-1">{trip.title}</h4>
-                      <div className="flex items-center gap-2 text-sm text-gray-500 mb-4"><Calendar size={14} /><span className="truncate">{trip.startDate ?
-                        trip.startDate : '未定'} {trip.endDate ? ` - ${trip.endDate}` : ''}</span></div>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 mb-4"><Calendar size={14} /><span className="truncate">{trip.startDate ? trip.startDate : '未定'} {trip.endDate ? ` - ${trip.endDate}` : ''}</span></div>
                       <div className="mt-auto flex items-center justify-end text-teal-600 font-medium text-sm translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">進入規劃 <ArrowRight size={16} className="ml-1" /></div>
                     </div>
                   </div>
@@ -341,12 +318,15 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
         )}
       </main>
 
-      {/* Create Trip Modal */}
+      {/* 建立/編輯 Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2"><Plus size={20} className="text-teal-600" /> 建立新行程</h3>
+              <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+                {editingId ? <Edit3 size={20} className="text-blue-600" /> : <Plus size={20} className="text-teal-600" />}
+                {editingId ? '編輯行程資訊' : '建立新行程'}
+              </h3>
               <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
             </div>
             <div className="p-6 space-y-5">
@@ -379,7 +359,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
                 </div>
               </div>
 
-              {/* 航班資訊 */}
               <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-4">
                 <div className="flex items-center gap-2 text-blue-700 font-bold text-sm mb-1"><Plane size={16} /> 航班資訊 (選填)</div>
                 <div>
@@ -397,18 +376,24 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
                   </div>
                 </div>
               </div>
-
             </div>
             <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
               <button onClick={() => setShowCreateModal(false)} className="px-5 py-2.5 text-gray-600 font-medium hover:bg-gray-200 rounded-xl transition-colors">取消</button>
-              <button onClick={handleCreateTrip} disabled={isCreating || !newTrip.title ||
-                !newTrip.destination} className="px-6 py-2.5 bg-teal-600 text-white font-bold rounded-xl hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2">
-                {isCreating ? <Loader2 size={18} className="animate-spin" /> : '開始規劃'}
+              <button onClick={handleSaveTrip} disabled={isCreating || !newTrip.title || !newTrip.destination} className={`px-6 py-2.5 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 ${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-teal-600 hover:bg-teal-700'}`}>
+                {isCreating ? <Loader2 size={18} className="animate-spin" /> : (editingId ? '儲存變更' : '開始規劃')}
               </button>
             </div>
           </div>
         </div>
       )}
+      
+      {/* 邀請視窗 */}
+      <ShareModal 
+        isOpen={!!shareModalData} 
+        onClose={() => setShareModalData(null)} 
+        trip={shareModalData}
+        currentUser={user}
+      />
     </div>
   );
 }
