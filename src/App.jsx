@@ -3,7 +3,6 @@ import { useJsApiLoader } from '@react-google-maps/api';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { onAuthStateChanged } from 'firebase/auth';
-// 👇 1. 這裡加入了 arrayUnion
 import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, orderBy, query, writeBatch, arrayUnion } from 'firebase/firestore';
 import { auth, db } from './utils/firebase';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom';
@@ -104,34 +103,31 @@ const EditorPage = ({ isLoaded, user }) => {
   const [mobileTab, setMobileTab] = useState('canvas'); 
   const [showShareModal, setShowShareModal] = useState(false);
 
-  // 👇 2. 核心修改：抓取 Trip 並處理自動加入邏輯
+  // 1. 抓取 Trip
   useEffect(() => {
     if (!tripId || !user) return;
     setTripLoading(true);
     const tripRef = doc(db, 'artifacts', appId, 'trips', tripId);
     
-    // 注意這裡加了 async
     const unsubscribe = onSnapshot(tripRef, async (docSnap) => { 
       if (docSnap.exists()) {
         const data = docSnap.data();
         
-        // 🛠️ 自動加入邏輯：如果登入者不在名單內，直接加進去！
+        // 自動加入邏輯
         if (data.collaborators && !data.collaborators.includes(user.uid)) {
           console.log("發現新朋友！正在將您加入協作者名單...");
           try {
             await updateDoc(tripRef, {
               collaborators: arrayUnion(user.uid)
             });
-            // 更新後會觸發 snapshot 重新執行，自然會跑到下面的 setCurrentTrip
           } catch (err) {
             console.error("自動加入失敗:", err);
             setError("無法加入此行程，請聯繫擁有者。");
             setTripLoading(false);
           }
-          return; // 先中斷，等待更新後的下一次 snapshot
+          return;
         }
 
-        // 正常的讀取邏輯 (已在名單內)
         setCurrentTrip({ id: docSnap.id, ...data });
         if (data.center) setMapCenter(data.center);
         setTripLoading(false);
@@ -281,7 +277,8 @@ const EditorPage = ({ isLoaded, user }) => {
           </div>
 
           {/* 中間 Canvas */}
-          <div className={`${mobileTab === 'canvas' ? 'flex flex-col w-full' : 'hidden'} md:block md:flex-1 h-full z-20 overflow-hidden`}>
+          {/* 🟢 修改點：電腦版固定寬度 md:w-[28rem] (約450px) 且禁止壓縮 md:shrink-0，讓右側地圖貼緊 */}
+          <div className={`${mobileTab === 'canvas' ? 'flex flex-col w-full' : 'hidden'} md:block md:w-[28rem] md:shrink-0 h-full z-20 overflow-hidden`}>
             <div className="md:hidden bg-white border-b p-3 flex justify-between items-center shrink-0 shadow-sm z-50">
                <button onClick={() => navigate('/')} className="text-gray-500 p-1"><ChevronLeft size={24}/></button>
                <span className="font-bold text-gray-800 truncate max-w-[200px] text-lg">{currentTrip?.title}</span>
@@ -302,6 +299,7 @@ const EditorPage = ({ isLoaded, user }) => {
           </div>
 
           {/* 右側 MapZone */}
+          {/* 🟢 因為中間欄位現在是固定寬度，這裡的 flex-1 會讓地圖自動填滿剩下的所有空間 (消除空白) */}
           <div className={`${mobileTab === 'map' ? 'flex w-full' : 'hidden'} md:block md:flex-1 h-full z-10`}>
              <div className="w-full h-full [&>aside]:!flex [&>aside]:!w-full [&>aside]:!max-w-none [&>aside]:!h-full">
                 <MapZone 
