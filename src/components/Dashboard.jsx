@@ -4,10 +4,10 @@ import {
   ArrowRight, Loader2, User, MapPin, X,
   Plane, Globe
 } from 'lucide-react';
-import {
-  collection, doc, setDoc, query, orderBy, onSnapshot,
-  serverTimestamp, where
-} from 'firebase/firestore';
+//import {
+//  collection, doc, setDoc, query, orderBy, onSnapshot,
+//  serverTimestamp, where
+//} from 'firebase/firestore';
 import { signInWithPopup, signOut } from 'firebase/auth';
 // 請確認你的 firebase 設定檔路徑是否正確
 import { db, auth, googleProvider } from '../utils/firebase';
@@ -198,7 +198,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
           console.error("Geocoding error (ignored):", geoError);
         }
       }
-
+      const nowISO = new Date().toISOString();
       // 3. 準備寫入資料
       const tripData = {
         title: newTrip.title || "未命名行程",
@@ -206,21 +206,24 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
         startDate: newTrip.startDate || "",
         endDate: newTrip.endDate || "",
         center: {
-          lat: finalCenter.lat || 35.6762,
-          lng: finalCenter.lng || 139.6503
+            lat: finalCenter.lat || 35.6762,
+            lng: finalCenter.lng || 139.6503
         },
         flightOut: {
-          airport: newTrip.flightOut.airport || "",
-          time: newTrip.flightOut.time || ""
+            airport: newTrip.flightOut.airport || "",
+            time: newTrip.flightOut.time || ""
         },
         flightIn: {
-          airport: newTrip.flightIn.airport || "",
-          time: newTrip.flightIn.time || ""
+            airport: newTrip.flightIn.airport || "",
+            time: newTrip.flightIn.time || ""
         },
         ownerId: user.uid,
         collaborators: [user.uid],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        // 👇 改用單純的字串，不再依賴伺服器運算
+        createdAt: nowISO, 
+        updatedAt: nowISO
+        //createdAt: serverTimestamp(),
+        //updatedAt: serverTimestamp()
       };
 
       // 4. 寫入 Firestore - 【樂觀模式】

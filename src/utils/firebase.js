@@ -27,7 +27,8 @@ export const googleProvider = new GoogleAuthProvider();
 // 🛠️ 關鍵修復：使用 initializeFirestore 並強制開啟 experimentalForceLongPolling
 // 這會解決 99% 的網路卡死問題
 export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true, 
-});
-
-console.log("Firebase initialized with Long Polling!");
+    experimentalForceLongPolling: true,
+    ignoreUndefinedProperties: true, // 👈 新增這一行，讓它更寬容
+  });
+  
+  console.log("Firebase initialized with Long Polling & Ignore Undefined!");
