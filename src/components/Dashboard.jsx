@@ -155,6 +155,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   };
 
   const handleCreateTrip = async () => {
+    console.log("🚀 CTO 版本檢查：我是最新版！現在時間是字串！");
     if (!newTrip.title || !newTrip.destination) {
       alert("請填寫行程名稱與目的地");
       return;
