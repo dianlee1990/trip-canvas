@@ -4,10 +4,10 @@ import {
   ArrowRight, Loader2, User, MapPin, X,
   Plane, Globe
 } from 'lucide-react';
-//import {
-//  collection, doc, setDoc, query, orderBy, onSnapshot,
+import {
+  collection, doc, setDoc, query, orderBy, onSnapshot,
 //  serverTimestamp, where
-//} from 'firebase/firestore';
+} from 'firebase/firestore';
 import { signInWithPopup, signOut } from 'firebase/auth';
 // 請確認你的 firebase 設定檔路徑是否正確
 import { db, auth, googleProvider } from '../utils/firebase';
