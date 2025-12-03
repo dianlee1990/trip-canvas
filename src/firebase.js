@@ -20,4 +20,11 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
+// --- 👇 加入這段間諜程式碼 👇 ---
+console.log("=== Firebase Config 檢查 ===");
+console.log("Project ID:", firebaseConfig.projectId);
+console.log("API Key:", firebaseConfig.apiKey ? "有讀取到 (長度 " + firebaseConfig.apiKey.length + ")" : "⚠️ 是 undefined (沒讀到!)");
+console.log("===========================");
+// ------------------------------
+
 console.log("Firebase 連線已初始化！"); // 測試用，確認有跑這段
