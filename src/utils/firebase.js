@@ -12,7 +12,6 @@ const firebaseConfig = {
   storageBucket: "tripcanvas-479809.firebasestorage.app",
   messagingSenderId: "588919242622",
   appId: "1:588919242622:web:5d119dbcde9a1296c9fd2f",
-  measurementId: "G-PL6300GNHL"
 };
 
 // --- 間諜程式碼 ---
