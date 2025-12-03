@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, LogOut, Map as MapIcon, Calendar,
   ArrowRight, Loader2, User, MapPin, X,
-  Plane, Globe, Users, Edit3 // 新增 Users, Edit3
+  Plane, Globe, Users, Edit3
 } from 'lucide-react';
 import {
-  collection, doc, setDoc, updateDoc, onSnapshot // 新增 updateDoc
+  collection, doc, setDoc, updateDoc, onSnapshot
 } from 'firebase/firestore';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { db, auth, googleProvider } from '../utils/firebase';
 import { useNavigate } from 'react-router-dom';
-import ShareModal from './modals/ShareModal'; // 記得確認路徑正確
+import ShareModal from './modals/ShareModal';
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
@@ -33,7 +33,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
 
-  // 狀態：編輯模式與分享視窗
   const [editingId, setEditingId] = useState(null); 
   const [shareModalData, setShareModalData] = useState(null);
 
@@ -51,7 +50,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchWrapperRef = useRef(null);
 
-  // 監聽行程列表
   useEffect(() => {
     if (!user) {
       setTrips([]);
@@ -61,19 +59,14 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     const tripsRef = collection(db, 'artifacts', appId, 'trips');
     const unsubscribe = onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // 前端過濾：只顯示我是協作者的行程
       const myTrips = tripList.filter(t =>
         t.collaborators && t.collaborators.includes(user.uid)
       );
-
-      // 排序：新的在前
       myTrips.sort((a, b) => {
         const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
         const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
         return timeB - timeA;
       });
-
       setTrips(myTrips);
       setLoading(false);
     }, (error) => {
@@ -83,7 +76,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     return () => unsubscribe();
   }, [user]);
 
-  // 關閉建議選單
   useEffect(() => {
     function handleClickOutside(event) {
       if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
@@ -95,7 +87,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   }, []);
 
   const handleLogin = async () => {
-    console.log("🚀 嘗試登入...", { auth, googleProvider }); // 檢查這兩個物件是否存在
+    console.log("🚀 嘗試登入...", { auth, googleProvider });
     if (!auth) {
       alert("Firebase Auth 未初始化，請檢查 firebase.js");
       return;
@@ -105,7 +97,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
       console.log("✅ 登入成功！User:", result.user);
     } catch (error) { 
       console.error("❌ Login failed 詳細錯誤:", error); 
-      // 顯示更詳細的錯誤碼，幫我們判斷是 config 錯還是 key 錯
       alert(`登入失敗 (${error.code}): ${error.message}`);
     }
   };
@@ -131,7 +122,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     setShowSuggestions(false);
   };
 
-  // 開啟編輯模式
   const handleEditClick = (trip) => {
     setNewTrip({
       title: trip.title,
@@ -146,19 +136,15 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     setShowCreateModal(true);
   };
 
-  // 建立或更新行程
   const handleSaveTrip = async () => {
     if (!newTrip.title || !newTrip.destination) {
       alert("請填寫行程名稱與目的地");
       return;
     }
     setIsCreating(true);
-    
-    // 預設座標
     let finalCenter = { lat: 35.6762, lng: 139.6503 };
 
     try {
-      // 嘗試 Geocoding (如果使用者改了目的地)
       if (newTrip.preSelectedCenter) {
         finalCenter = {
           lat: Number(newTrip.preSelectedCenter.lat),
@@ -183,7 +169,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
       }
 
       const nowISO = new Date().toISOString();
-
       const tripData = {
         title: newTrip.title || "未命名行程",
         destination: newTrip.destination || "未知目的地",
@@ -196,14 +181,12 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
       };
 
       if (editingId) {
-        // --- 更新模式 ---
         console.log("正在更新行程...", editingId);
         const tripRef = doc(db, 'artifacts', appId, 'trips', editingId);
         await updateDoc(tripRef, tripData);
         console.log("更新成功！");
-        setShowCreateModal(false); // 更新完只關閉視窗，不跳轉
+        setShowCreateModal(false);
       } else {
-        // --- 建立模式 ---
         console.log("正在建立新行程...");
         const fullData = {
           ...tripData,
@@ -213,17 +196,13 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
         };
         const tripsRef = collection(db, 'artifacts', appId, 'trips');
         const newDocRef = doc(tripsRef);
-        
-        // 檢查 undefined
         const cleanData = JSON.parse(JSON.stringify(fullData));
         await setDoc(newDocRef, cleanData);
-        
         console.log("建立成功！");
         setShowCreateModal(false);
-        navigate(`/trip/${newDocRef.id}`); // 建立完跳轉
+        navigate(`/trip/${newDocRef.id}`);
       }
 
-      // 重置表單
       setNewTrip({
         title: '', destination: '', startDate: '', endDate: '', preSelectedCenter: null,
         flightOut: { airport: '', time: '' }, flightIn: { airport: '', time: '' }
@@ -239,8 +218,8 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10 px-6 py-3 flex items-center justify-between shadow-sm">
+    <div className="h-full flex flex-col bg-gray-50 font-sans text-gray-800">
+      <header className="bg-white border-b border-gray-200 shrink-0 px-6 py-3 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-2">
           <div className="bg-teal-600 p-1.5 rounded-lg">
             <MapIcon className="text-white" size={20} />
@@ -260,9 +239,9 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
         )}
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-10">
+      <main className="flex-1 overflow-y-auto px-6 py-10 max-w-6xl mx-auto w-full custom-scrollbar">
         {!user ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-500">
+          <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-500 h-full">
             <div className="w-24 h-24 bg-teal-50 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <MapIcon className="text-teal-600 w-12 h-12" />
             </div>
@@ -283,7 +262,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
             {loading ? (
               <div className="flex justify-center py-20"><Loader2 className="animate-spin text-teal-600" size={32} /></div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
                 <div onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center p-8 cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all group min-h-[220px]">
                   <div className="w-14 h-14 rounded-full bg-gray-100 group-hover:bg-teal-200 flex items-center justify-center mb-4 transition-colors"><Plus className="text-gray-400 group-hover:text-teal-700" size={28} /></div>
                   <span className="font-bold text-gray-500 group-hover:text-teal-700 text-lg">新增行程</span>
@@ -292,8 +271,8 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
                   <div key={trip.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden group flex flex-col relative"
                        onClick={() => navigate(`/trip/${trip.id}`)}>
                     
-                    {/* 操作按鈕 (懸浮顯示) */}
-                    <div className="absolute top-3 right-3 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* 🟢 修改點：調整按鈕顯示邏輯，手機版恆顯示，桌面版 Hover 才顯示 */}
+                    <div className="absolute top-3 right-3 z-20 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       <button 
                         onClick={(e) => { e.stopPropagation(); setShareModalData(trip); }}
                         className="bg-white/90 p-2 rounded-full shadow hover:text-teal-600 text-gray-500 hover:scale-110 transition-all"
@@ -330,7 +309,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
         )}
       </main>
 
-      {/* 建立/編輯 Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
@@ -365,7 +343,8 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1.5">旅遊日期</label>
-                <div className="grid grid-cols-2 gap-4">
+                {/* 🟢 修改點：改成 grid-cols-1 md:grid-cols-2，手機版垂直排列，電腦版並排 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <input type="date" className="w-full border border-gray-300 rounded-xl p-2.5 outline-none" value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} max={newTrip.endDate} />
                   <input type="date" className="w-full border border-gray-300 rounded-xl p-2.5 outline-none" value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} min={newTrip.startDate} />
                 </div>
@@ -399,7 +378,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
         </div>
       )}
       
-      {/* 邀請視窗 */}
       <ShareModal 
         isOpen={!!shareModalData} 
         onClose={() => setShareModalData(null)} 
