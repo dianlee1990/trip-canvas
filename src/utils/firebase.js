@@ -4,12 +4,12 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID
+    apiKey: "AIzaSyBdz5yhEVuKpgEv7OzS4NF440ai7Ld6Bso",
+    authDomain: "tripcanvas-v2.firebaseapp.com",
+    projectId: "tripcanvas-v2",
+    storageBucket: "tripcanvas-v2.firebasestorage.app",
+    messagingSenderId: "276763478616",
+    appId: "1:276763478616:web:9039884308b8ac0902582d"
   };
 
 // --- 初始化邏輯 (CTO 優化版) ---
