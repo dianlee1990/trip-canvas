@@ -171,11 +171,12 @@ const DateEditor = ({ startDate, endDate, onSave, onCancel, isSaving }) => {
   );
 }
 
-export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpdateTrip, itinerary, isGenerating, aiStatus, setIsAIModalOpen, handleRemoveFromItinerary, onPlaceSelect, onBack, handleUpdateItem }) {
+export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpdateTrip, itinerary, isGenerating, aiStatus, setIsAIModalOpen, handleRemoveFromItinerary, onPlaceSelect, onBack, handleUpdateItem, onOpenShare }) {
   const { setNodeRef } = useDroppable({ id: 'canvas-drop-zone' });
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [isSavingDate, setIsSavingDate] = useState(false);
 
+  // 🟢 注意：這裡我們保留邏輯計算，但 UI 在手機版會隱藏，因為移到 App.jsx 了
   const { totalDays, currentDateDisplay } = useMemo(() => {
     if (!currentTrip?.startDate || !currentTrip?.endDate) return { totalDays: 1, currentDateDisplay: '未設定日期' };
     const start = new Date(currentTrip.startDate);
@@ -212,15 +213,15 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
   const currentDayItems = useMemo(() => itinerary.filter(item => !item.day || item.day === activeDay), [itinerary, activeDay]);
 
   return (
-    // 🟢 修改點 1: 移除 max-w-md，改為 w-full，讓它填滿父容器 (28rem)。移除 shadow-xl。
     <div ref={setNodeRef} className="flex-1 w-full bg-white flex flex-col relative z-10 border-r border-gray-200 h-full">
-      <div className="p-4 border-b border-gray-100 bg-white sticky top-0 z-20">
+      {/* 🟢 修改點：這個 Header 區塊在手機版 (md:hidden) 會隱藏，因為移到 App.jsx 的頂部導覽列了 */}
+      <div className="hidden md:block p-4 border-b border-gray-100 bg-white sticky top-0 z-20">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <h2 className="font-bold text-lg text-gray-800 line-clamp-1 max-w-[150px]" title={currentTrip?.title}>{currentTrip?.title || "未命名行程"}</h2>
           </div>
           <div className="flex gap-2">
-            <button className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-full"><Share2 size={18} /></button>
+            <button onClick={onOpenShare} className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-full" title="分享與邀請"><Share2 size={18} /></button>
             <button onClick={() => setIsAIModalOpen(true)} className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-md hover:scale-105 transition-all flex items-center gap-1.5"><Sparkles size={14} /> AI 排程</button>
           </div>
         </div>
@@ -246,7 +247,6 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
         </div>
       </div>
 
-      {/* 🟢 修改點 2: 加入 pb-24 md:pb-4，這讓手機版底部留白，電腦版正常。 */}
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-50/50 pb-24 md:pb-4">
         {isGenerating && <div className="flex flex-col items-center justify-center py-10 space-y-4"><Loader2 className="animate-spin text-purple-600" size={32} /><p className="text-sm font-medium text-purple-700">{aiStatus}</p></div>}
         {!isGenerating && currentDayItems.length === 0 ? (

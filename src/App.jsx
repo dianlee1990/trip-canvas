@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
@@ -6,7 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, orderBy, query, writeBatch, arrayUnion } from 'firebase/firestore';
 import { auth, db } from './utils/firebase';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom';
-import { Layout, List, Map as MapIcon, ChevronLeft, Users } from 'lucide-react';
+import { Layout, List, Map as MapIcon, ChevronLeft, ChevronRight, Users, Sparkles } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
@@ -155,6 +155,15 @@ const EditorPage = ({ isLoaded, user }) => {
     return () => unsubscribe();
   }, [tripId]);
 
+  // 🟢 新增：計算總天數 (為了手機版 Header)
+  const totalDays = useMemo(() => {
+    if (!currentTrip?.startDate || !currentTrip?.endDate) return 1;
+    const start = new Date(currentTrip.startDate);
+    const end = new Date(currentTrip.endDate);
+    const diffDays = Math.ceil(Math.abs(end - start) / (86400000)) + 1;
+    return diffDays > 0 ? diffDays : 1;
+  }, [currentTrip]);
+
   const handleUpdateTrip = useCallback(async (updatedFields) => {
     if (!tripId) return;
     await updateDoc(doc(db, 'artifacts', appId, 'trips', tripId), { ...updatedFields, updatedAt: new Date().toISOString() });
@@ -277,23 +286,50 @@ const EditorPage = ({ isLoaded, user }) => {
           </div>
 
           {/* 中間 Canvas */}
-          {/* 🟢 修正：移除 flex-col wrapper 內的 overflow 設定，交給 Canvas 自己處理 */}
           <div className={`${mobileTab === 'canvas' ? 'flex flex-col w-full' : 'hidden'} md:block md:w-[28rem] md:shrink-0 h-full z-20 overflow-hidden`}>
-            <div className="md:hidden bg-white border-b p-3 flex justify-between items-center shrink-0 shadow-sm z-50">
-               <button onClick={() => navigate('/')} className="text-gray-500 p-1"><ChevronLeft size={24}/></button>
-               <span className="font-bold text-gray-800 truncate max-w-[200px] text-lg">{currentTrip?.title}</span>
-               <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Users size={20}/></button>
+            {/* 🟢 修改點：手機版單排 Header (Back + Day Switcher + AI + Share) */}
+            <div className="md:hidden bg-white border-b px-2 py-2 flex justify-between items-center shrink-0 shadow-sm z-50">
+               {/* 左：返回 */}
+               <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24}/></button>
+               
+               {/* 中：日期切換器 (Day X) */}
+               <div className="flex items-center gap-2 bg-gray-100 rounded-full px-1 py-1">
+                  <button 
+                    onClick={() => setActiveDay(p => Math.max(1, p - 1))} 
+                    disabled={activeDay <= 1}
+                    className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"
+                  >
+                    <ChevronLeft size={16}/>
+                  </button>
+                  <span className="text-sm font-bold text-gray-700 min-w-[3rem] text-center">Day {activeDay}</span>
+                  <button 
+                    onClick={() => setActiveDay(p => Math.min(totalDays, p + 1))} 
+                    disabled={activeDay >= totalDays}
+                    className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"
+                  >
+                    <ChevronRight size={16}/>
+                  </button>
+               </div>
+
+               {/* 右：功能按鈕 (AI + Share) */}
+               <div className="flex gap-2">
+                 <button onClick={() => setIsAIModalOpen(true)} className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white p-2 rounded-full shadow-sm"><Sparkles size={18}/></button>
+                 <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Users size={18}/></button>
+               </div>
             </div>
             
-            {/* 這裡只要單純 render Canvas 即可，它已經是 w-full h-full */}
-            <Canvas 
-              activeDay={activeDay} setActiveDay={setActiveDay} 
-              currentTrip={currentTrip} handleUpdateTrip={handleUpdateTrip} 
-              itinerary={itinerary} isGenerating={isGenerating} aiStatus={aiStatus} 
-              setIsAIModalOpen={setIsAIModalOpen} handleRemoveFromItinerary={handleRemoveFromItinerary} 
-              onPlaceSelect={handlePlaceSelect} onBack={() => navigate('/')} 
-              handleUpdateItem={handleUpdateItem} 
-            />
+            <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+              <Canvas 
+                activeDay={activeDay} setActiveDay={setActiveDay} 
+                currentTrip={currentTrip} handleUpdateTrip={handleUpdateTrip} 
+                itinerary={itinerary} isGenerating={isGenerating} aiStatus={aiStatus} 
+                setIsAIModalOpen={setIsAIModalOpen} handleRemoveFromItinerary={handleRemoveFromItinerary} 
+                onPlaceSelect={handlePlaceSelect} onBack={() => navigate('/')} 
+                handleUpdateItem={handleUpdateItem} 
+                onOpenShare={() => setShowShareModal(true)}
+              />
+              <div className="h-24 md:hidden"></div>
+            </div>
           </div>
 
           {/* 右側 MapZone */}
@@ -310,7 +346,8 @@ const EditorPage = ({ isLoaded, user }) => {
           </div>
         </div>
 
-        <div className="md:hidden bg-white border-t border-gray-200 flex justify-around items-center p-2 pb-6 shrink-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] w-full">
+        {/* 🟢 修改點：底部導覽列 padding 縮減 (pb-6 -> pb-2) */}
+        <div className="md:hidden bg-white border-t border-gray-200 flex justify-around items-center p-2 pb-2 shrink-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] w-full">
           <button onClick={() => setMobileTab('list')} className={`flex flex-col items-center justify-center h-12 w-16 rounded-xl transition-all ${mobileTab === 'list' ? 'text-teal-600 bg-teal-50' : 'text-gray-400 hover:bg-gray-50'}`}>
             <List size={24} />
             <span className="text-[10px] font-medium mt-0.5">找景點</span>

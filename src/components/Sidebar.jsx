@@ -23,14 +23,11 @@ const CATEGORY_FILTERS = [
   { id: 'transport', label: '車站', icon: Train },
 ];
 
-// 🟢 修改點 1：傳入 isMobile 參數
 const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, handleAddToItinerary, onPlaceSelect, isMobile }) => {
-  
-  // 🟢 修改點 2：當 isMobile 為 true 時，禁用拖曳功能
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${item.id}`,
     data: { type: 'sidebar-item', item: item },
-    disabled: isMobile // 關鍵修正：手機版禁用拖曳
+    disabled: isMobile 
   });
 
   const [imageSrc, setImageSrc] = useState(item.image);
@@ -63,10 +60,10 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
       className={`group flex gap-3 p-2 rounded-lg transition-all bg-white relative shadow-sm 
       ${isDragging ? 'opacity-50 ring-2 ring-teal-400' : ''}
       ${isFavoriteView ? (isFav ? 'border-l-4 border-orange-500 bg-orange-50' : 'border border-gray-100') : 'border border-gray-100 hover:border-teal-300 hover:shadow-md'}
-      ${isMobile ? '' : 'cursor-grab active:cursor-grabbing'} /* 手機版移除抓取游標 */
+      ${isMobile ? '' : 'cursor-grab active:cursor-grabbing'}
       `}
       onClick={handleCardClick}
-      style={{ touchAction: isMobile ? 'auto' : 'none' }} // 關鍵修正：手機版允許原生捲動
+      style={{ touchAction: isMobile ? 'auto' : 'none' }}
     >
       <img src={imageSrc} onError={() => setImageSrc(PLACEHOLDER_IMAGE_URL)} className="w-16 h-16 rounded object-cover bg-gray-100 border border-gray-200" alt={item.name}/>
       <div className="flex-1 min-w-0">
@@ -86,10 +83,8 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
               onClick={(e) => { 
                 e.stopPropagation(); 
                 handleAddToItinerary({ ...item, lat: item.pos?.lat, lng: item.pos?.lng }); 
-                // 手機版加入成功後給個小震動回饋 (如果支援)
                 if (navigator.vibrate) navigator.vibrate(50);
               }} 
-              // 🟢 修改點 3：手機版讓「加入」按鈕更顯眼一點
               className={`text-xs flex items-center gap-1 font-medium px-2 py-1 rounded w-fit border transition-colors ${isMobile ? 'bg-teal-50 text-teal-700 border-teal-200' : 'text-teal-600 border-transparent hover:bg-teal-50 hover:border-teal-100'}`} 
               title="直接加入行程"
             >
@@ -111,8 +106,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
   const [currentCityName, setCurrentCityName] = useState("");
   const [activeFilter, setActiveFilter] = useState('all');
   const placesServiceRef = useRef(null);
-
-  // 🟢 修改點 4：偵測是否為手機版
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -383,7 +376,8 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
         </div>
 
         {sidebarTab === 'search' && !isSearchMode && (
-          <div className="mt-3 flex flex-wrap gap-2 pb-1">
+          // 🟢 修改點：手機版橫向滑動 (flex-nowrap overflow-x-auto)，桌面版換行 (md:flex-wrap)
+          <div className="mt-3 flex gap-2 pb-1 flex-nowrap overflow-x-auto scrollbar-hide md:flex-wrap md:overflow-visible">
             {CATEGORY_FILTERS.map(filter => {
               const Icon = filter.icon;
               const isActive = activeFilter === filter.id;
@@ -391,7 +385,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                 <button
                   key={filter.id}
                   onClick={() => setActiveFilter(filter.id)}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all ${isActive ?
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all shrink-0 ${isActive ?
                     'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                 >
                   <Icon size={12} /> {filter.label}
