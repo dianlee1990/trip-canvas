@@ -37,7 +37,7 @@ const LandingPage = ({ onLogin }) => {
     { img: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963", tag: "#秘境溫泉", title: "極致放鬆" },
     { img: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26", tag: "#東京街頭", title: "城市漫遊" }, // 🟢 修正圖片
     { img: "https://images.unsplash.com/photo-1493857671505-72967e2e2760", tag: "#風格露營", title: "擁抱自然" },
-    { img: "https://images.unsplash.com/photo-1519671482502-9759101d4561", tag: "#在地美食", title: "味蕾探險" },
+    { img: "https://images.unsplash.com/photo-1504674900247-0877df9cc836", tag: "#在地美食", title: "味蕾探險" },
     { img: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf", tag: "#主題樂園", title: "童心未泯" },
   ];
 
