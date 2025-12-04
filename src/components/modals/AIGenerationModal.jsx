@@ -26,7 +26,6 @@ const TRIP_PURPOSES = [
   { id: 'solo', label: '獨自探索', emoji: '🎒' },
 ];
 
-// 🟢 新增：心情選項
 const TRIP_MOODS = [
   { id: 'excited', label: '刺激冒險', emoji: '🎢' },
   { id: 'fresh', label: '新鮮探索', emoji: '✨' },
@@ -63,7 +62,7 @@ export default function AIGenerationModal({
   const [step, setStep] = useState('preferences');
   const [selectedStyles, setSelectedStyles] = useState(['spot', 'food']);
   const [selectedPurpose, setSelectedPurpose] = useState('couple');
-  const [selectedMood, setSelectedMood] = useState('fresh'); // 🟢 預設心情
+  const [selectedMoods, setSelectedMoods] = useState(['fresh']); 
   const [userNote, setUserNote] = useState('');
   const [selectedDays, setSelectedDays] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
@@ -124,6 +123,7 @@ export default function AIGenerationModal({
   if (!isOpen) return null;
 
   const toggleStyle = (id) => setSelectedStyles(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+  const toggleMood = (id) => setSelectedMoods(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]); 
   const toggleDay = (dayNum) => setSelectedDays(prev => prev.includes(dayNum) ? prev.filter(d => d !== dayNum) : [...prev, dayNum]);
 
   const handleDefaultHotelChange = (val) => {
@@ -171,14 +171,16 @@ export default function AIGenerationModal({
       const destination = currentTrip?.destination || "旅遊目的地";
       const stylesLabels = TRAVEL_STYLES.filter(s => selectedStyles.includes(s.id)).map(s => s.label).join('、');
       const purposeLabel = TRIP_PURPOSES.find(p => p.id === selectedPurpose)?.label || "一般旅遊";
-      const moodLabel = TRIP_MOODS.find(m => m.id === selectedMood)?.label || "愉快"; // 🟢 心情標籤
+      const moodsLabels = TRIP_MOODS.filter(m => selectedMoods.includes(m.id)).map(m => m.label).join('、'); 
       const daysToPlan = selectedDays.join('、');
       const favoriteNames = userFavorites.length > 0 ? userFavorites.map(f => f.name).join('、') : "無";
 
-      // 🟢 關鍵修正：只傳送「source !== 'ai'」的項目給 AI 當參考
-      // 這樣 AI 就不會看到舊的 AI 行程，只會看到用戶手動加的
+      // 🟢 關鍵：過濾出所有手動行程的名稱，建立「絕對避雷名單」
       const manualItems = existingItinerary.filter(i => i.source !== 'ai');
-      const allExistingNames = existingItinerary.map(item => item.name).join(', ');
+      const manualItemNames = manualItems.map(i => i.name).join('、');
+
+      // 舊的 AI 行程，這次會被清除重排，所以不需要加入避雷名單
+      // 但如果有其他天數的 AI 行程想要避開，可以加進來 (目前我們先專注在手動行程不重複)
 
       const flightOut = currentTrip?.flightOut || {};
       const flightIn = currentTrip?.flightIn || {};
@@ -246,14 +248,16 @@ export default function AIGenerationModal({
         - 若為「朋友出遊」：可以安排熱鬧、適合拍照打卡、逛街或夜生活的行程。
         - 若為「獨自探索」：可以安排深度文化、咖啡廳發呆或特色小店。
 
-        【本次旅行心情：${moodLabel} (New)】
-        請根據此心情選擇景點氛圍：
-        - 刺激冒險：遊樂園、戶外活動、新奇體驗。
-        - 新鮮探索：非觀光客主流景點、在地人才知道的店。
-        - 療傷放鬆：大自然、溫泉、安靜的咖啡廳、海邊。
-        - 正能量：陽光充足的地方、有活力的市集、神社祈福。
-        - 慵懶隨性：睡到飽、不用排隊的點、野餐。
-        - 浪漫氛圍：夜景、燈飾、高級餐廳。
+        【心情與風格設定：${moodsLabels} (Critical)】
+        【風格設定：${stylesLabels}】
+        
+        【每日主題分配策略 (Daily Theme Allocation)】
+        由於使用者選擇了多種心情/風格，請不要將它們混雜在每一天，而是嘗試 **將不同主題分配到不同天數**，創造層次感。
+        例如（若使用者選了「刺激」和「放鬆」）：
+        - Day 1 主題：刺激冒險（去樂園、玩水）
+        - Day 2 主題：療傷放鬆（泡溫泉、看海）
+        
+        請在產生結果時，將該日的主題氛圍反映在景點選擇上。
 
         【區域規劃策略 (Critical - 防止繞圈圈)】
         為了讓行程更順暢且豐富，請嚴格遵守以下「區域集中」與「每日差異化」原則：
@@ -267,6 +271,11 @@ export default function AIGenerationModal({
 
         3. **城鄉搭配 (Mix Urban & Nature)**：
            - 若規劃天數超過 3 天，請至少安排 1 天前往 **稍微遠離市中心** 的近郊景點。
+
+        【絕對避雷名單 (Strictly Excluded)】
+        以下地點是使用者已經手動安排好的，**絕對禁止** 再次出現在你的推薦名單中（除非是同一天不同時段的同一地點，例如飯店）：
+        ⛔ 避雷名單：${manualItemNames}
+        (請選擇其他尚未安排的景點或餐廳來填補空檔)
 
         【最高優先級：住宿串聯與順路邏輯】
         請務必根據以下每日的「起點」與「終點」來安排中間的景點，確保行程順暢，不要折返跑：
@@ -289,10 +298,8 @@ export default function AIGenerationModal({
         請嚴格遵守各類型景點的營業時間，並反映在 "startTime" 欄位中。
 
         【使用者偏好】
-        - 風格：${stylesLabels}
         - 必遊/收藏(優先安排)：${favoriteNames}
         - 備註：${userNote || "無"}
-        - 全域避雷(已排過)：${allExistingNames}
 
         【aiSummary 欄位撰寫規則】：請用繁體中文，控制在 30 字以內，不要有前言後語。
 
@@ -351,43 +358,48 @@ export default function AIGenerationModal({
               {/* 旅行目的 */}
               <div>
                 <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Heart size={16} /> 旅行目的 (AI 將為此優化)</label>
-                <div className="flex flex-wrap gap-2">
+                {/* 🟢 改為 Grid 佈局，手機版一排三個 */}
+                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
                   {TRIP_PURPOSES.map(purpose => (
-                    <button key={purpose.id} onClick={() => setSelectedPurpose(purpose.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${selectedPurpose === purpose.id ?
+                    <button key={purpose.id} onClick={() => setSelectedPurpose(purpose.id)} className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 ${selectedPurpose === purpose.id ?
                       'bg-pink-100 border-pink-300 text-pink-700' : 'bg-white border-gray-200 text-gray-600'}`}>
-                      <span>{purpose.emoji}</span> {purpose.label}
+                      <span className="text-lg sm:text-base">{purpose.emoji}</span>
+                      <span className="text-xs sm:text-sm">{purpose.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* 🟢 新增：旅行心情 */}
+              {/* 🟢 旅行心情 (複選) */}
               <div>
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Smile size={16} /> 旅行心情 (想體驗什麼氛圍)</label>
-                <div className="flex flex-wrap gap-2">
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Smile size={16} /> 旅行心情 (可複選)</label>
+                {/* 🟢 改為 Grid 佈局，手機版一排三個 */}
+                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
                   {TRIP_MOODS.map(mood => (
-                    <button key={mood.id} onClick={() => setSelectedMood(mood.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${selectedMood === mood.id ?
-                      'bg-yellow-100 border-yellow-300 text-yellow-700' : 'bg-white border-gray-200 text-gray-600'}`}>
-                      <span>{mood.emoji}</span> {mood.label}
+                    <button key={mood.id} onClick={() => toggleMood(mood.id)} className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 ${selectedMoods.includes(mood.id) ?
+                      'bg-yellow-100 border-yellow-300 text-yellow-700 ring-2 ring-yellow-200' : 'bg-white border-gray-200 text-gray-600'}`}>
+                      <span className="text-lg sm:text-base">{mood.emoji}</span>
+                      <span className="text-xs sm:text-sm">{mood.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* 旅行風格 */}
+              {/* 旅行風格 (複選) */}
               <div>
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Tag size={16} /> 旅行風格</label>
-                <div className="flex flex-wrap gap-2">
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Tag size={16} /> 旅行風格 (可複選)</label>
+                {/* 🟢 改為 Grid 佈局，手機版一排三個 */}
+                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
                   {TRAVEL_STYLES.map(style => (
-                    <button key={style.id} onClick={() => toggleStyle(style.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${selectedStyles.includes(style.id) ?
-                      'bg-purple-100 border-purple-300 text-purple-700' : 'bg-white border-gray-200 text-gray-600'}`}>
-                      <span>{style.emoji}</span> {style.label}
+                    <button key={style.id} onClick={() => toggleStyle(style.id)} className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 ${selectedStyles.includes(style.id) ?
+                      'bg-purple-100 border-purple-300 text-purple-700 ring-2 ring-purple-200' : 'bg-white border-gray-200 text-gray-600'}`}>
+                      <span className="text-lg sm:text-base">{style.emoji}</span>
+                      <span className="text-xs sm:text-sm">{style.label}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* ... (其餘部分保持不變) ... */}
               {/* 選擇天數 */}
               <div>
                 <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Calendar size={16} /> 選擇要重排的天數</label>
@@ -437,7 +449,6 @@ export default function AIGenerationModal({
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 space-y-8 text-center">
-              {/* Animation */}
               <div className="relative">
                 <div className="absolute inset-0 bg-purple-200 rounded-full animate-ping opacity-20"></div>
                 <div className="absolute inset-0 bg-purple-100 rounded-full animate-ping opacity-40 delay-150"></div>
