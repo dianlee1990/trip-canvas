@@ -3,11 +3,9 @@ import {
   X, Sparkles, Tag,
   FileText, Calendar, AlertCircle,
   Plane, Camera, Coffee, Map, Sun, Music, Car,
-  ShoppingBag, Utensils, Hotel
+  ShoppingBag, Utensils, Hotel, Users, Heart, Baby, Armchair, Smile
 } from 'lucide-react';
-// 請確認此路徑正確指向你的 gemini.js 檔案
 import { runGemini } from '../../utils/gemini';
-// 請確認你有安裝並設定好 @react-google-maps/api
 import { Autocomplete } from '@react-google-maps/api';
 
 const TRAVEL_STYLES = [
@@ -18,6 +16,24 @@ const TRAVEL_STYLES = [
   { id: 'nature', label: '自然風景', emoji: '🌲' },
   { id: 'culture', label: '人文歷史', emoji: '⛩️' },
   { id: 'drive', label: '自駕兜風', emoji: '🚗' },
+];
+
+const TRIP_PURPOSES = [
+  { id: 'couple', label: '浪漫蜜月', emoji: '💍' },
+  { id: 'family', label: '新婚/親子', emoji: '👨‍👩‍👧‍👦' },
+  { id: 'friends', label: '朋友出遊', emoji: '🍻' },
+  { id: 'retired', label: '退休漫遊', emoji: '🧓' },
+  { id: 'solo', label: '獨自探索', emoji: '🎒' },
+];
+
+// 🟢 新增：心情選項
+const TRIP_MOODS = [
+  { id: 'excited', label: '刺激冒險', emoji: '🎢' },
+  { id: 'fresh', label: '新鮮探索', emoji: '✨' },
+  { id: 'healing', label: '療傷放鬆', emoji: '🌿' },
+  { id: 'positive', label: '正能量', emoji: '💪' },
+  { id: 'chill', label: '慵懶隨性', emoji: '🛌' },
+  { id: 'romantic', label: '浪漫氛圍', emoji: '🌹' },
 ];
 
 const LOADING_MESSAGES = [
@@ -46,6 +62,8 @@ export default function AIGenerationModal({
 }) {
   const [step, setStep] = useState('preferences');
   const [selectedStyles, setSelectedStyles] = useState(['spot', 'food']);
+  const [selectedPurpose, setSelectedPurpose] = useState('couple');
+  const [selectedMood, setSelectedMood] = useState('fresh'); // 🟢 預設心情
   const [userNote, setUserNote] = useState('');
   const [selectedDays, setSelectedDays] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
@@ -152,9 +170,14 @@ export default function AIGenerationModal({
     try {
       const destination = currentTrip?.destination || "旅遊目的地";
       const stylesLabels = TRAVEL_STYLES.filter(s => selectedStyles.includes(s.id)).map(s => s.label).join('、');
+      const purposeLabel = TRIP_PURPOSES.find(p => p.id === selectedPurpose)?.label || "一般旅遊";
+      const moodLabel = TRIP_MOODS.find(m => m.id === selectedMood)?.label || "愉快"; // 🟢 心情標籤
       const daysToPlan = selectedDays.join('、');
       const favoriteNames = userFavorites.length > 0 ? userFavorites.map(f => f.name).join('、') : "無";
 
+      // 🟢 關鍵修正：只傳送「source !== 'ai'」的項目給 AI 當參考
+      // 這樣 AI 就不會看到舊的 AI 行程，只會看到用戶手動加的
+      const manualItems = existingItinerary.filter(i => i.source !== 'ai');
       const allExistingNames = existingItinerary.map(item => item.name).join(', ');
 
       const flightOut = currentTrip?.flightOut || {};
@@ -185,36 +208,65 @@ export default function AIGenerationModal({
           timeConstraint = `(行程開始於 ${flightOut.time} 後)`;
         }
 
-        const currentDayItems = existingItinerary
-            .filter(i => Number(i.day) === d.day)
-            .sort((a, b) => {
-                const timeA = a.startTime ? parseInt(a.startTime.replace(':', '')) : 0;
-                const timeB = b.startTime ? parseInt(b.startTime.replace(':', '')) : 0;
-                return timeA - timeB;
-            });
-        
+        const currentDayManualItems = manualItems
+          .filter(i => Number(i.day) === d.day)
+          .sort((a, b) => {
+            const timeA = a.startTime ? parseInt(a.startTime.replace(':', '')) : 0;
+            const timeB = b.startTime ? parseInt(b.startTime.replace(':', '')) : 0;
+            return timeA - timeB;
+          });
+
         let existingContext = "";
         let existingItemsList = "無";
-        
-        if (currentDayItems.length > 0) {
-            existingItemsList = currentDayItems.map(i => `[${i.startTime || '時間未定'}] ${i.name} (${i.type === 'food' ? '餐飲' : '景點'})`).join(' -> ');
-            existingContext = `
-            ★ 【重要：該日既有行程】
-            目前該日已安排：${existingItemsList}。
+
+        if (currentDayManualItems.length > 0) {
+          existingItemsList = currentDayManualItems.map(i => `[${i.startTime || '時間未定'}] ${i.name} (${i.type === 'food' ? '餐飲' : '景點'})`).join(' -> ');
+          existingContext = `
+            ★ 【重要：該日既有固定行程 (用戶手動加入)】
+            目前該日使用者已手動安排：${existingItemsList}。
             
-            請遵守以下「增量排程」規則：
-            1. **嚴禁重複**：絕對不要再次建議上述已存在的地點。
+            請遵守以下「填空排程」規則：
+            1. **保留固定點**：請將上述地點保留在行程中，不可移除。
             2. **填補空檔**：請分析上述行程的時間點，找出「空檔」並插入適合的新景點或餐廳。
-            3. **順路安排**：新插入的點必須與前後行程地理位置順路。
-            4. **時間合理**：若當天行程已滿（超過 4-5 個點），請僅針對「缺漏的餐點」做補充，不要硬塞景點導致時間卡在 23:59。
-            `;
+            3. **順路安排**：新插入的點必須與固定點地理位置順路。
+          `;
         }
 
-        hotelPrompt += `- Day ${d.day}: 起點 [${startPoint}] -> 終點 [${endPoint}] ${timeConstraint}${existingContext}\n`;
+        hotelPrompt += `- Day ${d.day} : 起點 [${startPoint}] -> 終點 [${endPoint}] ${timeConstraint}${existingContext}\n`;
       });
 
       const prompt = `
         你是一位旅遊規劃大師。請針對「${destination}」規劃第 [${daysToPlan}] 天行程。
+
+        【本次旅行目的：${purposeLabel} (Critical)】
+        請務必根據此目的調整景點選擇與節奏：
+        - 若為「浪漫蜜月」：請多安排氣氛佳的餐廳、夜景、放鬆行程。
+        - 若為「新婚/親子」：請安排適合推車、有育嬰室、小孩感興趣的樂園或公園，避免太累的爬山。
+        - 若為「退休漫遊」：請安排少走路、有電梯、步調緩慢的景點，多安排休息時間。
+        - 若為「朋友出遊」：可以安排熱鬧、適合拍照打卡、逛街或夜生活的行程。
+        - 若為「獨自探索」：可以安排深度文化、咖啡廳發呆或特色小店。
+
+        【本次旅行心情：${moodLabel} (New)】
+        請根據此心情選擇景點氛圍：
+        - 刺激冒險：遊樂園、戶外活動、新奇體驗。
+        - 新鮮探索：非觀光客主流景點、在地人才知道的店。
+        - 療傷放鬆：大自然、溫泉、安靜的咖啡廳、海邊。
+        - 正能量：陽光充足的地方、有活力的市集、神社祈福。
+        - 慵懶隨性：睡到飽、不用排隊的點、野餐。
+        - 浪漫氛圍：夜景、燈飾、高級餐廳。
+
+        【區域規劃策略 (Critical - 防止繞圈圈)】
+        為了讓行程更順暢且豐富，請嚴格遵守以下「區域集中」與「每日差異化」原則：
+        1. **每日一區 (One Zone Per Day)**：
+           - 每一天的行程必須 **集中在同一個主要區域或商圈**。
+           - 例如 Day 1 專攻「區域A」，Day 2 專攻「區域B」。
+           - **嚴禁** 為了填滿時間而在不同大區域間反覆穿梭。
+        
+        2. **區域不重疊 (Distinct Zones)**：
+           - 不同天數的行程，應盡量選擇 **完全不同** 的地理區域。
+
+        3. **城鄉搭配 (Mix Urban & Nature)**：
+           - 若規劃天數超過 3 天，請至少安排 1 天前往 **稍微遠離市中心** 的近郊景點。
 
         【最高優先級：住宿串聯與順路邏輯】
         請務必根據以下每日的「起點」與「終點」來安排中間的景點，確保行程順暢，不要折返跑：
@@ -224,12 +276,9 @@ export default function AIGenerationModal({
         若當日的「起點」與「終點」不同（例如從 A城市 移動到 B城市）：
         1. 該日行程 **必須** 呈現為「A點 -> 沿途景點 -> B點」的線性路徑。
         2. 請根據地理位置，安排 **起點與終點之間** 的順路景點。
-        3. **嚴禁** 在起點附近玩完後直接瞬移到終點，也 **嚴禁** 快到終點了又折返回起點附近的景點。
 
         【強制規則：起訖點必列入】
-        請務必將每日的「起點」與「終點」明確列入行程中，生成對應的 JSON 物件：
-        1. 每天的 **第一個行程** 必須是該日的「起點」(飯店或機場)。
-        2. 每天的 **最後一個行程** 必須是該日的「終點」(飯店或機場)。
+        請務必將每日的「起點」與「終點」明確列入行程中，生成對應的 JSON 物件。
 
         【三餐保障規則 (Critical)】
         AI 必須檢查每日行程是否包含早、中、晚三餐。
@@ -237,11 +286,7 @@ export default function AIGenerationModal({
         2. **補充缺漏**：若發現某餐有空檔且未安排，**必須** 插入一個推薦餐廳或特色小吃。
 
         【最高優先級：營業時間與時段邏輯】
-        請嚴格遵守各類型景點的營業時間，並反映在 "startTime" 欄位中：
-        1. **夜市**：17:00 後。
-        2. **酒吧**：19:00 後。
-        3. **寺廟/博物館**：09:00 - 16:00 (白天)。
-        4. **早市**：08:00 - 12:00。
+        請嚴格遵守各類型景點的營業時間，並反映在 "startTime" 欄位中。
 
         【使用者偏好】
         - 風格：${stylesLabels}
@@ -249,21 +294,7 @@ export default function AIGenerationModal({
         - 備註：${userNote || "無"}
         - 全域避雷(已排過)：${allExistingNames}
 
-        【aiSummary 欄位撰寫規則 (Critical)】：
-        請先判斷地點性質，並嚴格遵守以下格式：
-        1. **若為具體單一地點 (如：餐廳、咖啡廳、單一商店、單一景點)**：
-           - 餐廳/咖啡廳：請直接寫出「必點：xxx、xxx」或「必喝：xxx」。
-           - 商店/伴手禮：請直接寫出「必買：xxx」。
-           - 景點：請直接寫出「必看：xxx」或其最大亮點。
-        2. **若為大範圍區域 (如：商圈、夜市、百貨公司)**：
-           - 請列出該範圍內「最熱門的 1-2 間商店、餐廳或景點名稱」。
-           - 範例：「擁有熱門的阿宗麵線與老天祿滷味」、「匯集了鼎泰豐與多個國際精品的購物中心」。
-        
-        請用繁體中文，控制在 30 字以內，不要有前言後語。
-
-        【排程邏輯】
-        1. 景點之間的移動必須合理。
-        2. 除非使用者備註，否則晚上回到住宿地點休息。
+        【aiSummary 欄位撰寫規則】：請用繁體中文，控制在 30 字以內，不要有前言後語。
 
         【格式規範】
         回傳純 JSON 陣列。
@@ -274,7 +305,7 @@ export default function AIGenerationModal({
             "type": "spot"|"food"|"hotel"|"transport",
             "aiSummary": string,
             "tags": string[],
-            "startTime": string (HH:MM, 務必符合營業時間與行程順序),
+            "startTime": string (HH:MM),
             "suggestedTimeSlot": "morning"|"afternoon"|"evening",
             "duration": number (停留分鐘數),
             "pos": { "lat": number, "lng": number }
@@ -289,7 +320,7 @@ export default function AIGenerationModal({
       const jsonText = rawResponse.substring(startIndex, endIndex + 1);
       const generatedData = JSON.parse(jsonText);
 
-      onGenerate(generatedData);
+      onGenerate(generatedData, selectedDays);
 
     } catch (error) {
       console.error("AI Error:", error);
@@ -308,32 +339,63 @@ export default function AIGenerationModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-white">
-          <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2"><Sparkles size={20} className="text-purple-600"/> {step === 'preferences' ? 'AI 行程客製化' : 'AI 正在工作中'}</h3>
-          {!isGenerating && <button onClick={onClose}><X size={24} className="text-gray-400 hover:text-gray-600"/></button>}
+          <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2"><Sparkles size={20} className="text-purple-600" /> {step === 'preferences' ?
+            'AI 行程客製化' : 'AI 正在工作中'}</h3>
+          {!isGenerating && <button onClick={onClose}><X size={24} className="text-gray-400 hover:text-gray-600" /></button>}
         </div>
 
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
           {step === 'preferences' ? (
             <div className="space-y-6">
 
+              {/* 旅行目的 */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Heart size={16} /> 旅行目的 (AI 將為此優化)</label>
+                <div className="flex flex-wrap gap-2">
+                  {TRIP_PURPOSES.map(purpose => (
+                    <button key={purpose.id} onClick={() => setSelectedPurpose(purpose.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${selectedPurpose === purpose.id ?
+                      'bg-pink-100 border-pink-300 text-pink-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                      <span>{purpose.emoji}</span> {purpose.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 🟢 新增：旅行心情 */}
+              <div>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Smile size={16} /> 旅行心情 (想體驗什麼氛圍)</label>
+                <div className="flex flex-wrap gap-2">
+                  {TRIP_MOODS.map(mood => (
+                    <button key={mood.id} onClick={() => setSelectedMood(mood.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${selectedMood === mood.id ?
+                      'bg-yellow-100 border-yellow-300 text-yellow-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                      <span>{mood.emoji}</span> {mood.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* 旅行風格 */}
               <div>
                 <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Tag size={16} /> 旅行風格</label>
                 <div className="flex flex-wrap gap-2">
                   {TRAVEL_STYLES.map(style => (
-                    <button key={style.id} onClick={() => toggleStyle(style.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${selectedStyles.includes(style.id) ? 'bg-purple-100 border-purple-300 text-purple-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                    <button key={style.id} onClick={() => toggleStyle(style.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${selectedStyles.includes(style.id) ?
+                      'bg-purple-100 border-purple-300 text-purple-700' : 'bg-white border-gray-200 text-gray-600'}`}>
                       <span>{style.emoji}</span> {style.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* 選擇天數 (置頂) */}
+              {/* ... (其餘部分保持不變) ... */}
+              {/* 選擇天數 */}
               <div>
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Calendar size={16} /> 選擇要排程的天數</label>
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Calendar size={16} /> 選擇要重排的天數</label>
+                <div className="text-xs text-gray-500 mb-2">⚠️ 注意：選擇的天數將會<b>清除舊的 AI 行程</b>並重新安排，您手動加入的行程會被保留。</div>
                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                   {tripDays.map((d) => (
-                    <div key={d.day} onClick={() => toggleDay(d.day)} className={`cursor-pointer rounded-lg border p-2 flex flex-col items-center justify-center transition-all ${selectedDays.includes(d.day) ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white border-gray-200 text-gray-500'}`}>
+                    <div key={d.day} onClick={() => toggleDay(d.day)} className={`cursor-pointer rounded-lg border p-2 flex flex-col items-center justify-center transition-all ${selectedDays.includes(d.day) ?
+                      'bg-purple-600 border-purple-600 text-white' : 'bg-white border-gray-200 text-gray-500'}`}>
                       <span className="text-xs opacity-80">{d.date.slice(5)}</span>
                       <span className="font-bold text-sm">D{d.day}</span>
                     </div>
@@ -356,7 +418,8 @@ export default function AIGenerationModal({
                       <span className="text-xs font-bold w-12 text-gray-600">Day {d.day}</span>
                       <div className="flex-1">
                         <Autocomplete onLoad={(ref) => autocompleteRefs.current[d.day] = ref} onPlaceChanged={() => onDailyPlaceChanged(d.day)}>
-                          <input type="text" className="w-full border border-gray-200 rounded p-2 text-xs focus:ring-1 focus:ring-purple-500 outline-none" value={dailyHotels[d.day] || ''} placeholder={`Day ${d.day} 住宿地點`} onChange={(e) => handleDailyHotelChange(d.day, e.target.value)} />
+                          <input type="text" className="w-full border border-gray-200 rounded p-2 text-xs focus:ring-1 focus:ring-purple-500 outline-none" value={dailyHotels[d.day] ||
+                            ''} placeholder={`Day ${d.day} 住宿地點`} onChange={(e) => handleDailyHotelChange(d.day, e.target.value)} />
                         </Autocomplete>
                       </div>
                     </div>
@@ -370,10 +433,11 @@ export default function AIGenerationModal({
                 <textarea className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50" rows={2} placeholder="例如：有帶長輩、想吃海鮮..." value={userNote} onChange={(e) => setUserNote(e.target.value)} />
               </div>
 
-              {errorMsg && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2"><AlertCircle size={16}/> {errorMsg}</div>}
+              {errorMsg && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2"><AlertCircle size={16} /> {errorMsg}</div>}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 space-y-8 text-center">
+              {/* Animation */}
               <div className="relative">
                 <div className="absolute inset-0 bg-purple-200 rounded-full animate-ping opacity-20"></div>
                 <div className="absolute inset-0 bg-purple-100 rounded-full animate-ping opacity-40 delay-150"></div>
@@ -416,8 +480,10 @@ export default function AIGenerationModal({
       <style>{`
         @keyframes progress { 0% { transform: translateX(-100%); } 50% { transform: translateX(0%); } 100% { transform: translateX(100%); } }
         .animate-progress { animation: progress 2s infinite linear; }
-        @keyframes draw-lines { 0% { stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; } 10% { opacity: 1; } 100% { stroke-dasharray: 100; stroke-dashoffset: 0; opacity: 1; } }
-        .icon-drawing-container svg path, .icon-drawing-container svg circle, .icon-drawing-container svg line, .icon-drawing-container svg polyline, .icon-drawing-container svg rect { stroke-dasharray: 100; stroke-dashoffset: 100; animation: draw-lines 1.5s ease-out forwards; }
+        @keyframes draw-lines { 0% { stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; } 10% { opacity: 1;
+        } 100% { stroke-dasharray: 100; stroke-dashoffset: 0; opacity: 1; } }
+        .icon-drawing-container svg path, .icon-drawing-container svg circle, .icon-drawing-container svg line, .icon-drawing-container svg polyline, .icon-drawing-container svg rect { stroke-dasharray: 100; stroke-dashoffset: 100;
+        animation: draw-lines 1.5s ease-out forwards; }
       `}</style>
     </div>
   );

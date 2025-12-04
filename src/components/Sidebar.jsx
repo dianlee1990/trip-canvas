@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Map, Search, Sparkles, Heart, Plus, Loader2, DollarSign, Clock, Navigation, AlertTriangle,
   ChevronLeft, Camera, Coffee, ShoppingBag, Bed, Activity, Utensils,
-  Beer, Landmark, Train, Mountain
+  Beer, Landmark, Train, Mountain, Users // 🟢 新增 Users
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { IconByType } from '../icons/IconByType';
@@ -97,14 +97,15 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
   );
 };
 
-export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggleFavorite, handleAddToItinerary, isMapScriptLoaded, mapInstance, mapCenter, onPlaceSelect, mapBounds, onBack }) {
+// 🟢 修改點 1: 接收 onOpenAI, onOpenShare props
+export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggleFavorite, handleAddToItinerary, isMapScriptLoaded, mapInstance, mapCenter, onPlaceSelect, mapBounds, onBack, onOpenAI, onOpenShare }) {
   const [searchInput, setSearchInput] = useState('');
   const [textSearchResults, setTextSearchResults] = useState([]);
   const [aiRecommendations, setAiRecommendations] = useState([]);
   
-  const [isLoading, setIsLoading] = useState(false); // 首次載入狀態
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // 🟢 新增：載入更多狀態
-  const observerTarget = useRef(null); // 🟢 新增：監聽卷軸底部的哨兵
+  const [isLoading, setIsLoading] = useState(false); 
+  const [isLoadingMore, setIsLoadingMore] = useState(false); 
+  const observerTarget = useRef(null); 
 
   const [searchError, setSearchError] = useState(null);
   const [currentCityName, setCurrentCityName] = useState("");
@@ -168,16 +169,13 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     return "這個區域";
   }, []);
 
-  // 🟢 核心：整合「首次載入」與「載入更多」的邏輯
   const fetchAIRecommendations = useCallback(async (filterType, isLoadMore = false) => {
     if (!isMapScriptLoaded) return;
     
-    // 如果是首次載入，清空清單並顯示大 Loading
     if (!isLoadMore) {
         setIsLoading(true);
         setAiRecommendations([]);
     } else {
-        // 如果是載入更多，顯示小 Loading
         setIsLoadingMore(true);
     }
     setSearchError(null);
@@ -202,7 +200,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       if (filterType === 'nature') typePrompt = "自然景觀、公園、登山步道、海灘";
       if (filterType === 'transport') typePrompt = "主要車站、交通樞紐、特色火車站";
 
-      // 🟢 如果是載入更多，要把目前已有的排除掉
       const existingNames = isLoadMore ? aiRecommendations.map(i => i.name).join('、') : "";
       const excludePrompt = isLoadMore ? `(非常重要：請絕對不要重複推薦以下地點：${existingNames})` : "";
 
@@ -351,14 +348,12 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     return () => clearTimeout(timer);
   }, [searchInput, handleSearch]);
 
-  // 監聽 Tab 切換或 Filter 切換
   useEffect(() => {
     if (sidebarTab === 'search' && !searchInput.trim()) {
-      fetchAIRecommendations(activeFilter, false); // 換類別時，視為首次載入 (isLoadMore=false)
+      fetchAIRecommendations(activeFilter, false); 
     }
-  }, [sidebarTab, activeFilter, searchInput]); // 移除 fetchAIRecommendations 避免無窮迴圈
+  }, [sidebarTab, activeFilter, searchInput]); 
 
-  // 🟢 監聽捲動到底部 (Infinite Scroll)
   useEffect(() => {
     if (!observerTarget.current || sidebarTab !== 'search' || isSearchMode || isLoading || isLoadingMore) return;
 
@@ -366,7 +361,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       entries => {
         if (entries[0].isIntersecting && aiRecommendations.length > 0) {
           console.log("滑到底部，載入更多推薦...");
-          fetchAIRecommendations(activeFilter, true); // 觸發載入更多 (isLoadMore=true)
+          fetchAIRecommendations(activeFilter, true); 
         }
       },
       { threshold: 1.0 }
@@ -381,13 +376,29 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     <aside className="w-full h-full flex flex-col z-20 bg-white border-r border-gray-200">
       <div ref={placesServiceRef} className="absolute top-0 left-0 w-0 h-0 overflow-hidden"></div>
 
-      <div className="h-16 min-h-16 max-h-16 border-b border-gray-200 flex items-center px-4 bg-white shrink-0">
-        <button onClick={onBack} className="mr-3 p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-teal-700 transition-colors cursor-pointer" title="回到儀表板">
-          <ChevronLeft size={24} />
-        </button>
-        <div className="flex items-center gap-2">
-          <Map className="text-teal-700" size={24}/>
-          <span className="font-bold text-teal-700 text-lg">TripCanvas</span>
+      {/* 🟢 修改點 2：Header 樣式調整與新增按鈕 */}
+      <div className="h-16 min-h-16 max-h-16 border-b border-gray-200 flex items-center justify-between px-4 bg-white shrink-0">
+        {/* 左側：返回 + Logo */}
+        <div className="flex items-center">
+          <button onClick={onBack} className="mr-3 p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-teal-700 transition-colors cursor-pointer" title="回到儀表板">
+            <ChevronLeft size={24} />
+          </button>
+          <div className="flex items-center gap-2">
+            <Map className="text-teal-700" size={24}/>
+            <span className="font-bold text-teal-700 text-lg">TripCanvas</span>
+          </div>
+        </div>
+
+        {/* 右側：AI & 分享 (只在手機版顯示 md:hidden) */}
+        <div className="flex items-center gap-2 md:hidden">
+           <button 
+              onClick={onOpenAI} 
+              className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-3 py-1.5 rounded-full shadow-sm flex items-center gap-1"
+           >
+              <Sparkles size={14}/>
+              <span className="text-xs font-bold whitespace-nowrap">AI 排程</span>
+           </button>
+           <button onClick={onOpenShare} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Users size={18}/></button>
         </div>
       </div>
 
@@ -469,7 +480,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                       !searchError && <div className="text-center py-10 text-gray-400 text-xs">暫無推薦資料</div>
                     )}
                     
-                    {/* 🟢 哨兵元素：滑到這裡觸發載入更多 */}
                     <div ref={observerTarget} className="h-10 flex items-center justify-center w-full">
                        {isLoadingMore && <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 size={14} className="animate-spin"/> 載入更多中...</div>}
                     </div>

@@ -129,8 +129,6 @@ const EditorPage = ({ isLoaded, user }) => {
 
   const [mobileTab, setMobileTab] = useState('canvas'); 
   const [showShareModal, setShowShareModal] = useState(false);
-  
-  // 手機版日期編輯狀態
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [isSavingDate, setIsSavingDate] = useState(false);
 
@@ -280,7 +278,8 @@ const EditorPage = ({ isLoaded, user }) => {
       lat: Number(item.lat ?? item.pos?.lat ?? 0), lng: Number(item.lng ?? item.pos?.lng ?? 0),
       rating: Number(item.rating ?? 0), price_level: Number(item.price_level ?? 0),
       day: Number(item.day || activeDay), startTime: item.startTime ?? null, duration: Number(item.duration ?? 60),
-      order: maxOrder + 1, createdAt: new Date().toISOString()
+      order: maxOrder + 1, createdAt: new Date().toISOString(),
+      source: 'manual' 
     };
     await addDoc(collection(db, 'artifacts', appId, 'trips', tripId, 'items'), newItem);
     if (window.innerWidth < 768) setMobileTab('canvas');
@@ -290,9 +289,22 @@ const EditorPage = ({ isLoaded, user }) => {
     await deleteDoc(doc(db, 'artifacts', appId, 'trips', tripId, 'items', id));
   }, [tripId]);
 
-  const handleAIGenerate = useCallback(async (generatedData) => {
+  const handleAIGenerate = useCallback(async (generatedData, targetDays) => {
     setIsAIModalOpen(false); setIsGenerating(false); setAiStatus("排程完成");
     if (!tripId) return;
+
+    const itemsToKeep = itinerary.filter(item => {
+        const isOnTargetDay = targetDays.includes(Number(item.day));
+        const isAiItem = item.source === 'ai';
+        if (isOnTargetDay && isAiItem) return false;
+        return true;
+    });
+
+    const itemsToRemove = itinerary.filter(item => {
+        const isOnTargetDay = targetDays.includes(Number(item.day));
+        const isAiItem = item.source === 'ai';
+        return isOnTargetDay && isAiItem;
+    });
 
     const preparedItems = generatedData.map((item, index) => {
       const rawId = item.place_id ?? item.id;
@@ -303,23 +315,32 @@ const EditorPage = ({ isLoaded, user }) => {
         lat: Number(item.pos?.lat ?? 0), lng: Number(item.pos?.lng ?? 0),
         rating: 0, price_level: 0, day: Number(item.day || 1),
         startTime: item.startTime ?? null, duration: Number(item.duration ?? 60),
-        order: index, createdAt: new Date()
+        order: index, createdAt: new Date(),
+        source: 'ai'
       };
     });
 
-    setItinerary(prev => recalculateTimes([...prev, ...preparedItems]));
+    setItinerary(prev => recalculateTimes([...itemsToKeep, ...preparedItems]));
 
     try {
       const batch = writeBatch(db);
+      
+      itemsToRemove.forEach(item => {
+          const itemRef = doc(db, 'artifacts', appId, 'trips', tripId, 'items', item.id);
+          batch.delete(itemRef);
+      });
+
       const itemsRef = collection(db, 'artifacts', appId, 'trips', tripId, 'items');
       preparedItems.forEach((item) => {
         const newDocRef = doc(itemsRef);
         const { id, ...dataToWrite } = item;
-        batch.set(newDocRef, { ...dataToWrite, createdAt: serverTimestamp() });
+        const specificDocRef = doc(itemsRef, item.id); 
+        batch.set(specificDocRef, { ...dataToWrite, createdAt: serverTimestamp() });
       });
+
       await batch.commit();
     } catch (e) { console.error(e); }
-  }, [tripId]);
+  }, [tripId, itinerary]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const handleDragStart = (event) => setActiveDragItem(event.active.data.current?.item || null);
@@ -356,7 +377,6 @@ const EditorPage = ({ isLoaded, user }) => {
         {/* 主要工作區 */}
         <div className="flex-1 flex overflow-hidden relative w-full">
           
-          {/* 左側 Sidebar */}
           <div className={`${mobileTab === 'list' ? 'flex flex-col w-full' : 'hidden'} md:block md:w-1/4 md:min-w-[320px] h-full z-30 overflow-hidden [&>aside]:!w-full [&>aside]:!min-w-0`}>
             <Sidebar 
               sidebarTab={sidebarTab} setSidebarTab={setSidebarTab} 
@@ -364,11 +384,13 @@ const EditorPage = ({ isLoaded, user }) => {
               handleAddToItinerary={handleAddToItinerary} isMapScriptLoaded={isLoaded} 
               mapInstance={mapInstance} mapCenter={mapCenter} onPlaceSelect={handlePlaceSelect} 
               mapBounds={mapBounds} onBack={() => navigate('/')} 
+              onOpenAI={() => setIsAIModalOpen(true)}
+              onOpenShare={() => setShowShareModal(true)}
             />
           </div>
 
-          {/* 中間 Canvas */}
-          <div className={`${mobileTab === 'canvas' ? 'flex flex-col w-full' : 'hidden'} md:block md:w-[28rem] md:shrink-0 h-full z-20 overflow-hidden`}>
+          {/* 🟢 修正：中間 Canvas 外層容器改為 flex + flex-col，確保內部 flex-1 生效 */}
+          <div className={`${mobileTab === 'canvas' ? 'flex flex-col w-full h-full' : 'hidden'} md:flex md:flex-col md:w-[28rem] md:shrink-0 md:h-full z-20 bg-white`}>
             <div className="md:hidden bg-white border-b px-2 py-2 flex justify-between items-center shrink-0 shadow-sm z-50 relative">
                <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24}/></button>
                
@@ -399,7 +421,8 @@ const EditorPage = ({ isLoaded, user }) => {
                </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+            {/* 🟢 修正：確保內層容器填滿並允許捲動 */}
+            <div className="flex-1 w-full h-full relative overflow-y-auto custom-scrollbar">
               <Canvas 
                 activeDay={activeDay} setActiveDay={setActiveDay} 
                 currentTrip={currentTrip} handleUpdateTrip={handleUpdateTrip} 
@@ -409,12 +432,10 @@ const EditorPage = ({ isLoaded, user }) => {
                 handleUpdateItem={handleUpdateItem} 
                 onOpenShare={() => setShowShareModal(true)}
               />
-              <div className="h-24 md:hidden"></div>
+              <div className="h-24 md:hidden shrink-0"></div>
             </div>
           </div>
 
-          {/* 右側 MapZone */}
-          {/* 🟢 修復：將 md:block 改為 md:flex md:flex-col，讓它在電腦版也能撐開高度 */}
           <div className={`${mobileTab === 'map' ? 'flex flex-col w-full' : 'hidden'} md:flex md:flex-col md:flex-1 h-full z-10`}>
              <div className="md:hidden bg-white border-b px-2 py-2 flex justify-between items-center shrink-0 shadow-sm z-50 relative">
                <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24}/></button>
@@ -444,7 +465,7 @@ const EditorPage = ({ isLoaded, user }) => {
                </div>
             </div>
 
-             <div className="w-full flex-1 relative [&>aside]:!flex [&>aside]:!w-full [&>aside]:!max-w-none [&>aside]:!h-full">
+             <div className="w-full flex-1 relative">
                 <MapZone 
                   sidebarTab={sidebarTab} itinerary={itinerary} handleAddToItinerary={handleAddToItinerary} 
                   isMapScriptLoaded={isLoaded} setMapInstance={setMapInstance} setMapCenter={setMapCenter} 

@@ -2,10 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, LogOut, Map as MapIcon, Calendar,
   ArrowRight, Loader2, User, MapPin, X,
-  Plane, Globe, Users, Edit3, Trash2 // 🟢 新增 Trash2
+  Plane, Globe, Users, Edit3, Trash2, Sparkles,
+  Zap, Compass, CheckCircle2, Star,
+  MessageCircle, MousePointer2, Check,
+  Smile, Camera, Utensils, Beer, Activity, Landmark, Mountain, Bed
 } from 'lucide-react';
 import {
-  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, arrayRemove // 🟢 新增 deleteDoc, arrayRemove
+  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, arrayRemove
 } from 'firebase/firestore';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { db, auth, googleProvider } from '../utils/firebase';
@@ -25,6 +28,360 @@ const POPULAR_DESTINATIONS = [
   { name: "Paris, France", label: "巴黎, 法國", keywords: ["paris", "巴黎", "france"], lat: 48.8566, lng: 2.3522 },
   { name: "New York, USA", label: "紐約, 美國", keywords: ["new york", "紐約", "usa"], lat: 40.7128, lng: -74.0060 },
 ];
+
+const LandingPage = ({ onLogin }) => {
+  
+  // 🟢 定義輪播圖片清單 (已修復無效連結)
+  const galleryItems = [
+    { img: "https://images.unsplash.com/photo-1551632811-561732d1e306", tag: "#隱藏酒吧", title: "深夜微醺" },
+    { img: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963", tag: "#秘境溫泉", title: "極致放鬆" },
+    { img: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26", tag: "#東京街頭", title: "城市漫遊" }, // 🟢 修正圖片
+    { img: "https://images.unsplash.com/photo-1493857671505-72967e2e2760", tag: "#風格露營", title: "擁抱自然" },
+    { img: "https://images.unsplash.com/photo-1519671482502-9759101d4561", tag: "#在地美食", title: "味蕾探險" },
+    { img: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf", tag: "#主題樂園", title: "童心未泯" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[100] min-h-screen bg-[#fffdf5] font-sans text-gray-900 overflow-y-auto overflow-x-hidden custom-scrollbar">
+      
+      {/* Navbar */}
+      <nav className="fixed w-full z-50 transition-all duration-300 py-4 px-6 lg:px-12 flex justify-between items-center bg-white/70 backdrop-blur-md border-b border-white/50">
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center text-white shadow-lg transform -rotate-3">
+            <MapIcon size={24} strokeWidth={2.5} />
+          </div>
+          <span className="font-black text-2xl tracking-tight text-teal-900">TripCanvas</span>
+        </div>
+        <div className="flex gap-4">
+          <button onClick={onLogin} className="hidden md:block px-6 py-2 rounded-full font-bold text-teal-700 hover:bg-teal-50 transition-colors">
+            登入
+          </button>
+          <button onClick={onLogin} className="px-6 py-2 bg-black text-white rounded-full font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2">
+            免費註冊 <ArrowRight size={16}/>
+          </button>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-teal-300 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-float"></div>
+        <div className="absolute top-20 right-0 w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-float-reverse"></div>
+        <div className="absolute -bottom-20 left-1/3 w-80 h-80 bg-orange-200 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-float"></div>
+
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
+          <div className="relative z-10 space-y-6 text-center lg:text-left">
+            <div className="inline-block px-4 py-1.5 rounded-full bg-white border border-teal-100 shadow-sm text-teal-700 font-bold text-sm mb-2 transform rotate-2 animate-pop-in">
+              🎉 2025 最潮的旅遊神器
+            </div>
+            <h1 className="text-5xl lg:text-7xl font-black text-gray-900 leading-[1.1] tracking-tight drop-shadow-sm">
+              把旅遊規劃<br/>
+              變成一場<span className="text-teal-600 inline-block transform hover:scale-110 transition-transform cursor-pointer">派對！</span>
+            </h1>
+            <p className="text-xl text-gray-600 font-medium leading-relaxed max-w-lg mx-auto lg:mx-0">
+              結合 <span className="text-purple-600 font-bold">AI 心情導航</span> 與 <span className="text-orange-500 font-bold">多人即時協作</span>。
+              別再一個人面對 Excel 表格崩潰，這裡只有好玩的行程，沒有雷隊友。
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-4">
+              <button onClick={onLogin} className="px-8 py-4 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl font-bold text-xl shadow-xl shadow-teal-200 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 group">
+                <Plane className="group-hover:animate-bounce" /> 開始我的旅程
+              </button>
+              <button onClick={onLogin} className="px-8 py-4 bg-white hover:bg-gray-50 text-gray-800 border-2 border-gray-100 rounded-2xl font-bold text-xl flex items-center justify-center gap-2">
+                👀 先逛逛再說
+              </button>
+            </div>
+
+            <div className="pt-8 flex items-center justify-center lg:justify-start gap-4">
+              <div className="flex -space-x-3">
+                {[1,2,3,4].map(i => (
+                    <img key={i} src={`https://i.pravatar.cc/100?img=${i+10}`} className="w-10 h-10 rounded-full border-2 border-white" alt="user"/>
+                ))}
+              </div>
+              <div className="text-sm font-bold text-gray-500">
+                <span className="text-teal-600">5,000+</span> 主揪正在使用
+              </div>
+            </div>
+          </div>
+
+          {/* Hero Visual */}
+          <div className="relative h-[500px] hidden lg:block">
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-96 bg-gray-200 rounded-3xl shadow-2xl overflow-hidden rotate-[-5deg] border-4 border-white z-10">
+              <img src="https://images.unsplash.com/photo-1539635278303-d4002c07eae3?auto=format&fit=crop&q=80&w=800" className="w-full h-full object-cover" alt="Tokyo"/>
+              <div className="absolute bottom-4 left-4 right-4 bg-white/80 backdrop-blur-md p-3 rounded-xl">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-gray-800">🇯🇵 東京爆買團</span>
+                  <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full">進行中</span>
+                </div>
+              </div>
+            </div>
+            <div className="absolute top-20 right-10 bg-white p-4 rounded-2xl rounded-bl-none shadow-xl z-20 animate-float max-w-[200px]">
+              <div className="flex items-center gap-2 mb-2">
+                <img src="https://i.pravatar.cc/100?img=5" className="w-6 h-6 rounded-full" alt="Sarah"/>
+                <span className="text-xs font-bold text-gray-500">Sarah</span>
+              </div>
+              <p className="text-sm font-bold text-gray-800">這間燒肉一定要訂位！不然吃不到 🥩</p>
+            </div>
+            <div className="absolute bottom-20 left-0 bg-purple-600 text-white p-4 rounded-2xl rounded-tr-none shadow-xl z-20 animate-float-reverse rotate-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles size={16} className="text-yellow-300"/>
+                <span className="text-xs font-bold uppercase tracking-wider opacity-80">AI Suggestion</span>
+              </div>
+              <p className="font-bold">下午 3 點剛好順路去<br/>「中目黑」喝咖啡 ☕️</p>
+            </div>
+            <div className="absolute top-1/3 left-10 z-30 animate-cursor">
+              <MousePointer2 className="text-orange-500 fill-orange-500" size={32}/>
+              <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded ml-4 font-bold">Alex</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature: Collaboration */}
+      <section className="py-24 bg-white relative overflow-hidden">
+        <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-16 items-center">
+          <div className="order-2 md:order-1 relative">
+            <div className="relative w-full aspect-square bg-gray-100 rounded-[3rem] overflow-hidden shadow-inner">
+              <img src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=800" className="opacity-50 w-full h-full object-cover grayscale mix-blend-luminosity" alt="Collab"/>
+              <div className="absolute top-10 left-10 right-10 bg-white p-4 rounded-2xl shadow-lg transform -rotate-2">
+                <div className="flex justify-between items-center border-b pb-2 mb-2">
+                  <span className="font-bold text-gray-800">Day 2: 淺草雷門</span>
+                  <div className="flex -space-x-2">
+                    <img src="https://i.pravatar.cc/100?img=1" className="w-6 h-6 rounded-full border border-white" alt="u1"/>
+                    <img src="https://i.pravatar.cc/100?img=2" className="w-6 h-6 rounded-full border border-white" alt="u2"/>
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-2 rounded text-sm text-gray-500 flex gap-2">
+                  <MessageCircle size={16}/>
+                  Alex: 那邊遊客很多，要早點去！
+                </div>
+              </div>
+              <div className="absolute bottom-20 right-5 left-20 bg-teal-600 text-white p-4 rounded-2xl shadow-lg transform rotate-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/20 rounded-lg"><Users size={20}/></div>
+                  <div>
+                    <p className="font-bold">即時同步</p>
+                    <p className="text-xs opacity-80">你改了行程，大家手機都會震動</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="order-1 md:order-2 space-y-6">
+            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 mb-4">
+              <Users size={24} />
+            </div>
+            <h2 className="text-4xl font-black text-gray-900">
+              揪團不當雷隊友，<br/>
+              行程大家一起喬！
+            </h2>
+            <p className="text-lg text-gray-600 leading-relaxed">
+              就像用 Google Docs 一樣簡單。把景點拖來拖去，在卡片上留言、設定停留時間，
+              不再需要一個人在群組自言自語。即時共編，讓每個人都有參與感。
+            </p>
+            <ul className="space-y-3">
+              {['多人同時在線編輯', '自動同步至手機 App', '內建 Google 地圖評分參考'].map((item, i) => (
+                <li key={i} className="flex items-center gap-3 font-bold text-gray-700">
+                  <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center"><Check size={14} strokeWidth={3}/></div>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature: AI */}
+      <section className="py-24 bg-gray-900 text-white relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 opacity-20">
+          <div className="absolute w-[500px] h-[500px] bg-purple-600 rounded-full blur-[100px] -top-20 -left-20 animate-pulse"></div>
+          <div className="absolute w-[400px] h-[400px] bg-blue-600 rounded-full blur-[100px] bottom-0 right-0 animate-pulse"></div>
+        </div>
+
+        <div className="max-w-6xl mx-auto px-6 relative z-10 grid md:grid-cols-2 gap-16 items-center">
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/50 text-purple-300 text-sm font-bold">
+              <Sparkles size={14}/> TripCanvas AI 2.0
+            </div>
+            <h2 className="text-4xl font-black">
+              懂你的「心情」<br/>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">才是真正的 AI 排程。</span>
+            </h2>
+            <p className="text-lg text-gray-300 leading-relaxed">
+              不只是排景點，更在乎你的感受。今天想來點 <span className="text-yellow-300">✨ 新鮮探索</span> 還是 <span className="text-green-300">🌿 療傷放鬆</span>？
+              告訴 AI 你的旅行目的與心情，30 秒內自動為你生成包含住宿、交通、美食的完美行程。
+            </p>
+            <button onClick={onLogin} className="px-6 py-3 bg-white text-gray-900 rounded-xl font-bold hover:bg-purple-50 transition-colors flex items-center gap-2 shadow-[0_0_20px_rgba(168,85,247,0.5)]">
+              <Zap size={18} className="text-purple-600" fill="currentColor"/> 免費試用 AI 排程
+            </button>
+          </div>
+          
+          <div className="relative">
+            <div className="bg-white text-gray-900 rounded-3xl p-6 shadow-2xl transform rotate-2 max-w-md mx-auto border border-gray-800/50">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-4">
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  <Sparkles size={20} className="text-purple-600"/> AI 行程客製化
+                </h3>
+                <div className="flex gap-1">
+                  <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-green-400"></div>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-2">
+                    <Smile size={16}/> 旅行心情
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                        {icon: '🎢', label: '刺激冒險', active: false},
+                        {icon: '✨', label: '新鮮探索', active: true},
+                        {icon: '🌿', label: '療傷放鬆', active: false},
+                        {icon: '💪', label: '正能量', active: false},
+                    ].map((mood, idx) => (
+                        <span key={idx} className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1 transition-all ${mood.active ? 'bg-yellow-100 border-yellow-400 text-yellow-800 ring-2 ring-yellow-200' : 'bg-white border-gray-200 text-gray-500'}`}>
+                            <span>{mood.icon}</span> {mood.label}
+                        </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-2">
+                    <Camera size={16}/> 旅行風格 (多選)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                        {icon: '🍜', label: '美食探索', active: true},
+                        {icon: '📸', label: '熱門踩點', active: true},
+                        {icon: '☕', label: '慢活漫遊', active: false},
+                        {icon: '🛍️', label: '逛街購物', active: false},
+                    ].map((style, idx) => (
+                        <span key={idx} className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1 transition-all ${style.active ? 'bg-purple-100 border-purple-400 text-purple-800 ring-2 ring-purple-200' : 'bg-white border-gray-200 text-gray-500'}`}>
+                            <span>{style.icon}</span> {style.label}
+                        </span>
+                    ))}
+                  </div>
+                </div>
+
+                <button className="w-full bg-purple-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg hover:bg-purple-700 transition-colors">
+                  <Sparkles size={18}/> 開始生成行程
+                </button>
+              </div>
+
+              <div className="absolute -bottom-6 -right-6 bg-gray-800 text-white p-4 rounded-xl shadow-xl flex items-center gap-3 animate-bounce" style={{animationDuration: '3s'}}>
+                <div className="relative">
+                  <div className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-75"></div>
+                  <div className="relative w-3 h-3 bg-green-500 rounded-full"></div>
+                </div>
+                <span className="text-xs font-bold">正在掃描當地熱門打卡點...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature: Discovery */}
+      <section className="py-24 bg-[#fffdf5] relative">
+        <div className="text-center max-w-3xl mx-auto px-6 mb-12">
+          <h2 className="text-4xl font-black text-gray-900 mb-4">
+            拒絕觀光客視角，<br/>挖掘<span className="text-orange-500 underline decoration-wavy">在地人</span>的私房清單。
+          </h2>
+          <p className="text-lg text-gray-600">
+            TripCanvas 整合了 <span className="font-bold text-teal-600">地圖探索</span> 功能，
+            不管你想找隱藏酒吧、深夜按摩還是秘境溫泉，我們都幫你分類好了。
+          </p>
+        </div>
+
+        <div className="flex justify-center gap-3 mb-12 flex-wrap px-6">
+          {[
+            { icon: Utensils, label: "必吃美食" },
+            { icon: Beer, label: "特色酒吧" },
+            { icon: Activity, label: "放鬆按摩" },
+            { icon: Landmark, label: "寺廟古蹟" },
+            { icon: Mountain, label: "自然秘境" },
+            { icon: Bed, label: "特色住宿" },
+          ].map((cat, idx) => (
+            <div key={idx} className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-gray-200 text-sm font-bold text-gray-600 hover:border-teal-500 hover:text-teal-600 transition-colors cursor-default hover:scale-105 transform">
+              <cat.icon size={16}/> {cat.label}
+            </div>
+          ))}
+        </div>
+
+        {/* 🟢 修正：Marquee 無縫循環 (複製兩份內容，移動 -50%) */}
+        <div className="relative w-full overflow-hidden py-10">
+          <div className="flex gap-6 w-max animate-marquee hover:[animation-play-state:paused]">
+            {[...galleryItems, ...galleryItems].map((item, i) => (
+                <div key={i} className="w-72 h-96 shrink-0 relative rounded-3xl overflow-hidden group cursor-pointer shadow-lg transform transition-transform hover:-translate-y-4">
+                    <img src={`${item.img}?auto=format&fit=crop&q=80&w=600`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="gallery"/>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                    <div className="absolute bottom-6 left-6 text-white">
+                        <span className="bg-orange-500 text-xs font-bold px-2 py-1 rounded mb-2 inline-block">{item.tag}</span>
+                        <h3 className="font-bold text-xl">{item.title}</h3>
+                    </div>
+                </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-teal-900 text-teal-100 py-20 px-6 text-center">
+        <div className="max-w-4xl mx-auto space-y-8">
+          <div className="w-16 h-16 bg-teal-800 rounded-2xl flex items-center justify-center mx-auto text-white mb-6">
+            <MapIcon size={32} />
+          </div>
+          <h2 className="text-4xl md:text-5xl font-black text-white">
+            準備好開始你的<br/>下一趟旅程了嗎？
+          </h2>
+          <p className="text-xl text-teal-200">
+            加入 TripCanvas，讓規劃行程從「繁瑣工作」變成「期待與享受」。
+          </p>
+          <button onClick={onLogin} className="px-10 py-5 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-bold text-2xl shadow-xl shadow-orange-900/20 transform hover:scale-105 transition-all">
+            立即開始 🔥
+          </button>
+          <p className="text-sm opacity-60 mt-10">
+            © 2025 TripCanvas. All rights reserved. Made for Travelers.
+          </p>
+        </div>
+      </footer>
+
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-20px); }
+        }
+        @keyframes float-reverse {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(15px); }
+        }
+        @keyframes cursor-move {
+          0% { transform: translate(0, 0); }
+          25% { transform: translate(100px, 50px); }
+          50% { transform: translate(50px, 100px); }
+          75% { transform: translate(-50px, 20px); }
+          100% { transform: translate(0, 0); }
+        }
+        /* 🟢 修正：Marquee keyframes 移動 -50% */
+        @keyframes marquee {
+          0% { transform: translateX(0%); }
+          100% { transform: translateX(-50%); }
+        }
+        @keyframes pop-in {
+          0% { opacity: 0; transform: scale(0.8) rotate(2deg); }
+          100% { opacity: 1; transform: scale(1) rotate(2deg); }
+        }
+        .animate-float { animation: float 6s ease-in-out infinite; }
+        .animate-float-reverse { animation: float-reverse 5s ease-in-out infinite; }
+        .animate-cursor { animation: cursor-move 10s infinite alternate; }
+        .animate-marquee { animation: marquee 60s linear infinite; } /* 稍微調慢速度 */
+        .animate-pop-in { animation: pop-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+      `}</style>
+    </div>
+  );
+};
 
 export default function Dashboard({ user, isMapScriptLoaded }) {
   const [trips, setTrips] = useState([]);
@@ -143,40 +500,29 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     setShowCreateModal(true);
   };
 
-  // 🟢 智慧刪除邏輯：區分 Owner 與 Collaborator
   const handleDeleteTrip = async (trip) => {
     const isOwner = trip.ownerId === user.uid;
-
     if (isOwner) {
-      // 邏輯 A：我是擁有者，我要刪除整個專案
       const hasOtherCollaborators = trip.collaborators && trip.collaborators.length > 1;
       let confirmMsg = "確定要刪除此行程嗎？\n\n此動作將無法復原，所有資料將會消失。";
-      
       if (hasOtherCollaborators) {
         confirmMsg = "⚠️ 警告：此行程目前有其他共編者！\n\n若您刪除此行程，所有成員（包含您）都將無法再存取此資料。\n\n您確定要強制刪除嗎？";
       }
-
       if (!window.confirm(confirmMsg)) return;
-
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'trips', trip.id));
-        // onSnapshot 會自動更新畫面
       } catch (error) {
         console.error("Delete failed:", error);
         alert("刪除失敗，請檢查網路連線。");
       }
-
     } else {
-      // 邏輯 B：我是共編者，我只要退出
       const confirmMsg = "確定要退出此行程的共編嗎？\n\n退出後，此行程將從您的列表中移除，但其他成員仍可繼續編輯。";
       if (!window.confirm(confirmMsg)) return;
-
       try {
         const tripRef = doc(db, 'artifacts', appId, 'trips', trip.id);
         await updateDoc(tripRef, {
           collaborators: arrayRemove(user.uid)
         });
-        // onSnapshot 會自動更新畫面
       } catch (error) {
         console.error("Leave failed:", error);
         alert("退出失敗，請檢查網路連線。");
@@ -184,7 +530,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     }
   };
 
-  // 建立或更新行程
   const handleSaveTrip = async () => {
     if (!newTrip.title || !newTrip.destination) {
       alert("請填寫行程名稱與目的地");
@@ -192,7 +537,6 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     }
     setIsCreating(true);
     let finalCenter = { lat: 35.6762, lng: 139.6503 };
-
     try {
       if (newTrip.preSelectedCenter) {
         finalCenter = {
@@ -267,179 +611,166 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 font-sans text-gray-800">
-      <header className="bg-white border-b border-gray-200 shrink-0 px-6 py-3 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-2">
-          <div className="bg-teal-600 p-1.5 rounded-lg">
-            <MapIcon className="text-white" size={20} />
-          </div>
-          <span className="font-bold text-xl text-teal-800 tracking-tight">TripCanvas</span>
-        </div>
-        {user ? (
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+      {!user ? (
+        <LandingPage onLogin={handleLogin} />
+      ) : (
+        <>
+          <header className="bg-white border-b border-gray-200 sticky top-0 z-10 px-6 py-3 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-2">
-              {user.photoURL ? <img src={user.photoURL} alt="User" className="w-8 h-8 rounded-full border border-gray-200" /> : <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700"><User size={16} /></div>}
-              <span className="text-sm font-medium hidden md:block">{user.displayName}</span>
+              <div className="bg-teal-600 p-1.5 rounded-lg">
+                <MapIcon className="text-white" size={20} />
+              </div>
+              <span className="font-bold text-xl text-teal-800 tracking-tight">TripCanvas</span>
             </div>
-            <button onClick={() => signOut(auth)} className="text-sm text-gray-500 hover:text-red-600 transition-colors flex items-center gap-1"><LogOut size={16} /> <span className="hidden md:inline">登出</span></button>
-          </div>
-        ) : (
-          <button onClick={handleLogin} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm">登入</button>
-        )}
-      </header>
-
-      <main className="flex-1 overflow-y-auto px-6 py-10 max-w-6xl mx-auto w-full custom-scrollbar">
-        {!user ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-500 h-full">
-            <div className="w-24 h-24 bg-teal-50 rounded-full flex items-center justify-center mb-6 shadow-inner">
-              <MapIcon className="text-teal-600 w-12 h-12" />
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                {user.photoURL ? <img src={user.photoURL} alt="User" className="w-8 h-8 rounded-full border border-gray-200" /> : <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700"><User size={16} /></div>}
+                <span className="text-sm font-medium hidden md:block">{user.displayName}</span>
+              </div>
+              <button onClick={() => signOut(auth)} className="text-sm text-gray-500 hover:text-red-600 transition-colors flex items-center gap-1"><LogOut size={16} /> <span className="hidden md:inline">登出</span></button>
             </div>
-            <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 leading-tight">規劃您的 <span className="text-teal-600">完美旅程</span></h1>
-            <p className="text-lg text-gray-600 max-w-2xl mb-10 leading-relaxed">使用 TripCanvas 的互動式地圖與 AI 推薦功能，輕鬆拖曳、安排景點，打造獨一無二的旅行計畫。</p>
-            <button onClick={handleLogin} className="flex items-center gap-3 bg-white border border-gray-300 px-8 py-4 rounded-xl shadow-lg hover:shadow-xl hover:border-teal-500 hover:-translate-y-1 transition-all group">
-              <img src="https://www.google.com/favicon.ico" alt="G" className="w-6 h-6" />
-              <span className="text-lg font-bold text-gray-700 group-hover:text-teal-700">使用 Google 帳號開始</span>
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-bold text-gray-800 border-l-4 border-teal-500 pl-3">我的行程</h2>
-              <button onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow hover:shadow-md"><Plus size={18} /> 建立新行程</button>
-            </div>
+          </header>
 
-            {loading ? (
-              <div className="flex justify-center py-20"><Loader2 className="animate-spin text-teal-600" size={32} /></div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
-                <div onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center p-8 cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all group min-h-[220px]">
-                  <div className="w-14 h-14 rounded-full bg-gray-100 group-hover:bg-teal-200 flex items-center justify-center mb-4 transition-colors"><Plus className="text-gray-400 group-hover:text-teal-700" size={28} /></div>
-                  <span className="font-bold text-gray-500 group-hover:text-teal-700 text-lg">新增行程</span>
-                </div>
-                {trips.map(trip => (
-                  <div key={trip.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden group flex flex-col relative"
-                       onClick={() => navigate(`/trip/${trip.id}`)}>
-                    
-                    <div className="absolute top-3 right-3 z-20 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                      {/* 🟢 新增：刪除按鈕 (紅色垃圾桶) */}
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeleteTrip(trip); }}
-                        className="bg-white/90 p-2 rounded-full shadow hover:text-red-600 text-gray-500 hover:scale-110 transition-all"
-                        title={trip.ownerId === user.uid ? "刪除行程" : "退出共編"}
-                      >
-                        <Trash2 size={18} />
-                      </button>
+          <main className="max-w-6xl mx-auto px-6 py-10">
+            <div>
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-2xl font-bold text-gray-800 border-l-4 border-teal-500 pl-3">我的行程</h2>
+                <button onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow hover:shadow-md"><Plus size={18} /> 建立新行程</button>
+              </div>
 
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setShareModalData(trip); }}
-                        className="bg-white/90 p-2 rounded-full shadow hover:text-teal-600 text-gray-500 hover:scale-110 transition-all"
-                        title="成員與邀請"
-                      >
-                        <Users size={18} />
-                      </button>
-                      {trip.ownerId === user.uid && (
+              {loading ? (
+                <div className="flex justify-center py-20"><Loader2 className="animate-spin text-teal-600" size={32} /></div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center p-8 cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all group min-h-[220px]">
+                    <div className="w-14 h-14 rounded-full bg-gray-100 group-hover:bg-teal-200 flex items-center justify-center mb-4 transition-colors"><Plus className="text-gray-400 group-hover:text-teal-700" size={28} /></div>
+                    <span className="font-bold text-gray-500 group-hover:text-teal-700 text-lg">新增行程</span>
+                  </div>
+                  {trips.map(trip => (
+                    <div key={trip.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden group flex flex-col relative"
+                         onClick={() => navigate(`/trip/${trip.id}`)}>
+                      
+                      <div className="absolute top-3 right-3 z-20 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <button 
-                          onClick={(e) => { e.stopPropagation(); handleEditClick(trip); }}
-                          className="bg-white/90 p-2 rounded-full shadow hover:text-blue-600 text-gray-500 hover:scale-110 transition-all"
-                          title="編輯行程資訊"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteTrip(trip); }}
+                          className="bg-white/90 p-2 rounded-full shadow hover:text-red-600 text-gray-500 hover:scale-110 transition-all"
+                          title={trip.ownerId === user.uid ? "刪除行程" : "退出共編"}
                         >
-                          <Edit3 size={18} />
+                          <Trash2 size={18} />
                         </button>
-                      )}
-                    </div>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setShareModalData(trip); }}
+                          className="bg-white/90 p-2 rounded-full shadow hover:text-teal-600 text-gray-500 hover:scale-110 transition-all"
+                          title="成員與邀請"
+                        >
+                          <Users size={18} />
+                        </button>
+                        {trip.ownerId === user.uid && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleEditClick(trip); }}
+                            className="bg-white/90 p-2 rounded-full shadow hover:text-blue-600 text-gray-500 hover:scale-110 transition-all"
+                            title="編輯行程資訊"
+                          >
+                            <Edit3 size={18} />
+                          </button>
+                        )}
+                      </div>
 
-                    <div className="h-32 bg-gradient-to-r from-teal-500 to-cyan-600 relative overflow-hidden">
-                      <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/20 rounded-full blur-xl"></div>
-                      <div className="absolute -left-4 -bottom-4 w-20 h-20 bg-black/10 rounded-full blur-lg"></div>
-                      <div className="absolute bottom-4 left-4 text-white z-10"><h3 className="text-2xl font-bold drop-shadow-md">{trip.destination}</h3></div>
+                      <div className="h-32 bg-gradient-to-r from-teal-500 to-cyan-600 relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/20 rounded-full blur-xl"></div>
+                        <div className="absolute -left-4 -bottom-4 w-20 h-20 bg-black/10 rounded-full blur-lg"></div>
+                        <div className="absolute bottom-4 left-4 text-white z-10"><h3 className="text-2xl font-bold drop-shadow-md">{trip.destination}</h3></div>
+                      </div>
+                      <div className="p-5 flex-1 flex flex-col">
+                        <h4 className="text-lg font-bold text-gray-800 mb-2 group-hover:text-teal-600 transition-colors line-clamp-1">{trip.title}</h4>
+                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-4"><Calendar size={14} /><span className="truncate">{trip.startDate ? trip.startDate : '未定'} {trip.endDate ? ` - ${trip.endDate}` : ''}</span></div>
+                        <div className="mt-auto flex items-center justify-end text-teal-600 font-medium text-sm translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">進入規劃 <ArrowRight size={16} className="ml-1" /></div>
+                      </div>
                     </div>
-                    <div className="p-5 flex-1 flex flex-col">
-                      <h4 className="text-lg font-bold text-gray-800 mb-2 group-hover:text-teal-600 transition-colors line-clamp-1">{trip.title}</h4>
-                      <div className="flex items-center gap-2 text-sm text-gray-500 mb-4"><Calendar size={14} /><span className="truncate">{trip.startDate ? trip.startDate : '未定'} {trip.endDate ? ` - ${trip.endDate}` : ''}</span></div>
-                      <div className="mt-auto flex items-center justify-end text-teal-600 font-medium text-sm translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">進入規劃 <ArrowRight size={16} className="ml-1" /></div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </main>
+
+          {/* Modals */}
+          {showCreateModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                  <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+                    {editingId ? <Edit3 size={20} className="text-blue-600" /> : <Plus size={20} className="text-teal-600" />}
+                    {editingId ? '編輯行程資訊' : '建立新行程'}
+                  </h3>
+                  <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
+                </div>
+                <div className="p-6 space-y-5">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">行程名稱</label>
+                    <input type="text" placeholder="例如：東京五天四夜爆食之旅" className="w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none" value={newTrip.title} onChange={e => setNewTrip({ ...newTrip, title: e.target.value })} />
+                  </div>
+                  <div className="relative" ref={searchWrapperRef}>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">目的地</label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3.5 top-3 text-gray-400" size={18} />
+                      <input type="text" placeholder="例如：Tokyo" className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none" value={newTrip.destination} onChange={handleDestinationChange} onFocus={() => { if (newTrip.destination && suggestions.length > 0) setShowSuggestions(true); }} autoComplete="off" />
+                    </div>
+                    {showSuggestions && suggestions.length > 0 && (
+                      <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                        {suggestions.map((place, index) => (
+                          <li key={index} onClick={() => handleSelectSuggestion(place)} className="px-4 py-3 hover:bg-teal-50 cursor-pointer transition-colors border-b border-gray-100 last:border-none flex items-center gap-3">
+                            <div className="bg-teal-100 p-1.5 rounded-full shrink-0"><Globe size={16} className="text-teal-600" /></div>
+                            <div><div className="font-bold text-gray-800 text-sm">{place.label}</div><div className="text-xs text-gray-500">{place.name}</div></div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">旅遊日期</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input type="date" className="w-full h-[46px] border border-gray-300 rounded-xl px-4 py-2.5 bg-white outline-none focus:border-teal-500 text-sm" value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} max={newTrip.endDate} />
+                      <input type="date" className="w-full h-[46px] border border-gray-300 rounded-xl px-4 py-2.5 bg-white outline-none focus:border-teal-500 text-sm" value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} min={newTrip.startDate} />
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </main>
 
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
-                {editingId ? <Edit3 size={20} className="text-blue-600" /> : <Plus size={20} className="text-teal-600" />}
-                {editingId ? '編輯行程資訊' : '建立新行程'}
-              </h3>
-              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
-            </div>
-            <div className="p-6 space-y-5">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">行程名稱</label>
-                <input type="text" placeholder="例如：東京五天四夜爆食之旅" className="w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none" value={newTrip.title} onChange={e => setNewTrip({ ...newTrip, title: e.target.value })} />
-              </div>
-              <div className="relative" ref={searchWrapperRef}>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">目的地</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3.5 top-3 text-gray-400" size={18} />
-                  <input type="text" placeholder="例如：Tokyo" className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none" value={newTrip.destination} onChange={handleDestinationChange} onFocus={() => { if (newTrip.destination && suggestions.length > 0) setShowSuggestions(true); }} autoComplete="off" />
-                </div>
-                {showSuggestions && suggestions.length > 0 && (
-                  <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                    {suggestions.map((place, index) => (
-                      <li key={index} onClick={() => handleSelectSuggestion(place)} className="px-4 py-3 hover:bg-teal-50 cursor-pointer transition-colors border-b border-gray-100 last:border-none flex items-center gap-3">
-                        <div className="bg-teal-100 p-1.5 rounded-full shrink-0"><Globe size={16} className="text-teal-600" /></div>
-                        <div><div className="font-bold text-gray-800 text-sm">{place.label}</div><div className="text-xs text-gray-500">{place.name}</div></div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">旅遊日期</label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input type="date" className="w-full h-[46px] border border-gray-300 rounded-xl px-4 py-2.5 bg-white outline-none focus:border-teal-500 text-sm" value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} max={newTrip.endDate} />
-                  <input type="date" className="w-full h-[46px] border border-gray-300 rounded-xl px-4 py-2.5 bg-white outline-none focus:border-teal-500 text-sm" value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} min={newTrip.startDate} />
-                </div>
-              </div>
-
-              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-4">
-                <div className="flex items-center gap-2 text-blue-700 font-bold text-sm mb-1"><Plane size={16} /> 航班資訊 (選填)</div>
-                <div>
-                  <label className="text-xs text-blue-600 block mb-1">去程 (抵達資訊)</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="text" placeholder="抵達機場 (如: NRT)" className="text-sm border border-blue-200 rounded-lg p-2 outline-none" value={newTrip.flightOut.airport} onChange={e => setNewTrip({ ...newTrip, flightOut: { ...newTrip.flightOut, airport: e.target.value } })} />
-                    <input type="time" className="text-sm border border-blue-200 rounded-lg p-2 outline-none" value={newTrip.flightOut.time} onChange={e => setNewTrip({ ...newTrip, flightOut: { ...newTrip.flightOut, time: e.target.value } })} />
+                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-4">
+                    <div className="flex items-center gap-2 text-blue-700 font-bold text-sm mb-1"><Plane size={16} /> 航班資訊 (選填)</div>
+                    <div>
+                      <label className="text-xs text-blue-600 block mb-1">去程 (抵達資訊)</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="text" placeholder="抵達機場 (如: NRT)" className="text-sm border border-blue-200 rounded-lg p-2 outline-none" value={newTrip.flightOut.airport} onChange={e => setNewTrip({ ...newTrip, flightOut: { ...newTrip.flightOut, airport: e.target.value } })} />
+                        <input type="time" className="text-sm border border-blue-200 rounded-lg p-2 outline-none" value={newTrip.flightOut.time} onChange={e => setNewTrip({ ...newTrip, flightOut: { ...newTrip.flightOut, time: e.target.value } })} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-blue-600 block mb-1">回程 (起飛資訊)</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="text" placeholder="出發機場 (如: KIX)" className="text-sm border border-blue-200 rounded-lg p-2 outline-none" value={newTrip.flightIn.airport} onChange={e => setNewTrip({ ...newTrip, flightIn: { ...newTrip.flightIn, airport: e.target.value } })} />
+                        <input type="time" className="text-sm border border-blue-200 rounded-lg p-2 outline-none" value={newTrip.flightIn.time} onChange={e => setNewTrip({ ...newTrip, flightIn: { ...newTrip.flightIn, time: e.target.value } })} />
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <label className="text-xs text-blue-600 block mb-1">回程 (起飛資訊)</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="text" placeholder="出發機場 (如: KIX)" className="text-sm border border-blue-200 rounded-lg p-2 outline-none" value={newTrip.flightIn.airport} onChange={e => setNewTrip({ ...newTrip, flightIn: { ...newTrip.flightIn, airport: e.target.value } })} />
-                    <input type="time" className="text-sm border border-blue-200 rounded-lg p-2 outline-none" value={newTrip.flightIn.time} onChange={e => setNewTrip({ ...newTrip, flightIn: { ...newTrip.flightIn, time: e.target.value } })} />
-                  </div>
+                <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+                  <button onClick={() => setShowCreateModal(false)} className="px-5 py-2.5 text-gray-600 font-medium hover:bg-gray-200 rounded-xl transition-colors">取消</button>
+                  <button onClick={handleSaveTrip} disabled={isCreating || !newTrip.title || !newTrip.destination} className={`px-6 py-2.5 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 ${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-teal-600 hover:bg-teal-700'}`}>
+                    {isCreating ? <Loader2 size={18} className="animate-spin" /> : (editingId ? '儲存變更' : '開始規劃')}
+                  </button>
                 </div>
               </div>
             </div>
-            <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
-              <button onClick={() => setShowCreateModal(false)} className="px-5 py-2.5 text-gray-600 font-medium hover:bg-gray-200 rounded-xl transition-colors">取消</button>
-              <button onClick={handleSaveTrip} disabled={isCreating || !newTrip.title || !newTrip.destination} className={`px-6 py-2.5 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 disabled:opacity-50 ${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-teal-600 hover:bg-teal-700'}`}>
-                {isCreating ? <Loader2 size={18} className="animate-spin" /> : (editingId ? '儲存變更' : '開始規劃')}
-              </button>
-            </div>
-          </div>
-        </div>
+          )}
+          
+          <ShareModal 
+            isOpen={!!shareModalData} 
+            onClose={() => setShareModalData(null)} 
+            trip={shareModalData}
+            currentUser={user}
+          />
+        </>
       )}
-      
-      <ShareModal 
-        isOpen={!!shareModalData} 
-        onClose={() => setShareModalData(null)} 
-        trip={shareModalData}
-        currentUser={user}
-      />
     </div>
   );
 }
