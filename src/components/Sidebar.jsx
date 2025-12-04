@@ -101,7 +101,11 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
   const [searchInput, setSearchInput] = useState('');
   const [textSearchResults, setTextSearchResults] = useState([]);
   const [aiRecommendations, setAiRecommendations] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  
+  const [isLoading, setIsLoading] = useState(false); // 首次載入狀態
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // 🟢 新增：載入更多狀態
+  const observerTarget = useRef(null); // 🟢 新增：監聽卷軸底部的哨兵
+
   const [searchError, setSearchError] = useState(null);
   const [currentCityName, setCurrentCityName] = useState("");
   const [activeFilter, setActiveFilter] = useState('all');
@@ -164,17 +168,28 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     return "這個區域";
   }, []);
 
-  const fetchAIRecommendations = useCallback(async (filterType) => {
+  // 🟢 核心：整合「首次載入」與「載入更多」的邏輯
+  const fetchAIRecommendations = useCallback(async (filterType, isLoadMore = false) => {
     if (!isMapScriptLoaded) return;
-    setIsLoading(true);
+    
+    // 如果是首次載入，清空清單並顯示大 Loading
+    if (!isLoadMore) {
+        setIsLoading(true);
+        setAiRecommendations([]);
+    } else {
+        // 如果是載入更多，顯示小 Loading
+        setIsLoadingMore(true);
+    }
     setSearchError(null);
-    setAiRecommendations([]);
 
     try {
       const lat = mapCenter ? mapCenter.lat : 35.70;
       const lng = mapCenter ? mapCenter.lng : 139.77;
-      const cityName = await fetchCityName(lat, lng);
-      setCurrentCityName(cityName);
+      let cityName = currentCityName;
+      if (!cityName || !isLoadMore) {
+          cityName = await fetchCityName(lat, lng);
+          setCurrentCityName(cityName);
+      }
 
       let typePrompt = "熱門旅遊景點、必吃餐廳或特色商家";
       if (filterType === 'food') typePrompt = "必吃美食、在地小吃、熱門餐廳";
@@ -187,9 +202,14 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       if (filterType === 'nature') typePrompt = "自然景觀、公園、登山步道、海灘";
       if (filterType === 'transport') typePrompt = "主要車站、交通樞紐、特色火車站";
 
+      // 🟢 如果是載入更多，要把目前已有的排除掉
+      const existingNames = isLoadMore ? aiRecommendations.map(i => i.name).join('、') : "";
+      const excludePrompt = isLoadMore ? `(非常重要：請絕對不要重複推薦以下地點：${existingNames})` : "";
+
       const prompt = `
-        請針對「${cityName}」這個城市或區域，推薦 5 到 6 個${typePrompt}。
+        請針對「${cityName}」這個城市或區域，推薦 6 個${typePrompt}。
         現在是旅遊旺季，請挑選本季最流行或評價最高的地點。
+        ${excludePrompt}
         請回傳純 JSON 陣列，格式如下：
         [ { "name": "地點名稱(請用Google Maps能搜尋到的標準名稱)", "type": "spot|food|shopping|massage|hotel", "reason": "推薦原因(10字內)" } ]
       `;
@@ -235,15 +255,22 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
         return null;
       }));
 
-      setAiRecommendations(enrichedItems.filter(i => i !== null));
+      const validItems = enrichedItems.filter(i => i !== null);
+
+      if (isLoadMore) {
+          setAiRecommendations(prev => [...prev, ...validItems]);
+      } else {
+          setAiRecommendations(validItems);
+      }
 
     } catch (error) {
       console.error("AI Recommendation Error:", error);
-      setSearchError("AI_ERROR");
+      if (!isLoadMore) setSearchError("AI_ERROR");
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
-  }, [mapCenter, fetchCityName, runPlacesServiceRequest, isMapScriptLoaded]);
+  }, [mapCenter, fetchCityName, runPlacesServiceRequest, isMapScriptLoaded, currentCityName, aiRecommendations]);
 
   const handleSearch = useCallback(async (query) => {
     if (!isMapScriptLoaded) {
@@ -324,11 +351,31 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     return () => clearTimeout(timer);
   }, [searchInput, handleSearch]);
 
+  // 監聽 Tab 切換或 Filter 切換
   useEffect(() => {
     if (sidebarTab === 'search' && !searchInput.trim()) {
-      fetchAIRecommendations(activeFilter);
+      fetchAIRecommendations(activeFilter, false); // 換類別時，視為首次載入 (isLoadMore=false)
     }
-  }, [sidebarTab, activeFilter, fetchAIRecommendations, searchInput]);
+  }, [sidebarTab, activeFilter, searchInput]); // 移除 fetchAIRecommendations 避免無窮迴圈
+
+  // 🟢 監聽捲動到底部 (Infinite Scroll)
+  useEffect(() => {
+    if (!observerTarget.current || sidebarTab !== 'search' || isSearchMode || isLoading || isLoadingMore) return;
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && aiRecommendations.length > 0) {
+          console.log("滑到底部，載入更多推薦...");
+          fetchAIRecommendations(activeFilter, true); // 觸發載入更多 (isLoadMore=true)
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    observer.observe(observerTarget.current);
+    return () => observer.disconnect();
+  }, [sidebarTab, isSearchMode, isLoading, isLoadingMore, aiRecommendations, activeFilter, fetchAIRecommendations]);
+
 
   return (
     <aside className="w-full h-full flex flex-col z-20 bg-white border-r border-gray-200">
@@ -376,7 +423,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
         </div>
 
         {sidebarTab === 'search' && !isSearchMode && (
-          // 🟢 修改點：手機版橫向滑動 (flex-nowrap overflow-x-auto)，桌面版換行 (md:flex-wrap)
           <div className="mt-3 flex gap-2 pb-1 flex-nowrap overflow-x-auto scrollbar-hide md:flex-wrap md:overflow-visible">
             {CATEGORY_FILTERS.map(filter => {
               const Icon = filter.icon;
@@ -416,11 +462,18 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                     <p className="text-xs text-gray-400">AI 正在挖掘最夯景點...</p>
                   </div>
                 ) : (
-                  aiRecommendations.length > 0 ? (
-                    aiRecommendations.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={false} isFav={myFavorites.some(f => f.id === item.id)} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} />)
-                  ) : (
-                    !searchError && <div className="text-center py-10 text-gray-400 text-xs">暫無推薦資料</div>
-                  )
+                  <>
+                    {aiRecommendations.length > 0 ? (
+                      aiRecommendations.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={false} isFav={myFavorites.some(f => f.id === item.id)} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} />)
+                    ) : (
+                      !searchError && <div className="text-center py-10 text-gray-400 text-xs">暫無推薦資料</div>
+                    )}
+                    
+                    {/* 🟢 哨兵元素：滑到這裡觸發載入更多 */}
+                    <div ref={observerTarget} className="h-10 flex items-center justify-center w-full">
+                       {isLoadingMore && <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 size={14} className="animate-spin"/> 載入更多中...</div>}
+                    </div>
+                  </>
                 )}
               </>
             )}
