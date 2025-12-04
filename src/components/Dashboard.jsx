@@ -31,11 +31,11 @@ const POPULAR_DESTINATIONS = [
 
 const LandingPage = ({ onLogin }) => {
   
-  // 🟢 定義輪播圖片清單 (已修復無效連結)
+  // 🟢 定義輪播圖片清單
   const galleryItems = [
     { img: "https://images.unsplash.com/photo-1551632811-561732d1e306", tag: "#隱藏酒吧", title: "深夜微醺" },
     { img: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963", tag: "#秘境溫泉", title: "極致放鬆" },
-    { img: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26", tag: "#東京街頭", title: "城市漫遊" }, // 🟢 修正圖片
+    { img: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26", tag: "#東京街頭", title: "城市漫遊" },
     { img: "https://images.unsplash.com/photo-1493857671505-72967e2e2760", tag: "#風格露營", title: "擁抱自然" },
     { img: "https://images.unsplash.com/photo-1504674900247-0877df9cc836", tag: "#在地美食", title: "味蕾探險" },
     { img: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf", tag: "#主題樂園", title: "童心未泯" },
@@ -611,7 +611,9 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+    // 🟢 關鍵修正：h-[100dvh] w-full ... overflow-y-auto overflow-x-hidden
+    // 讓 Dashboard 擁有自己的滾動容器，無視 global 的 overflow: hidden
+    <div className="h-[100dvh] w-full bg-gray-50 font-sans text-gray-800 overflow-y-auto overflow-x-hidden custom-scrollbar">
       {!user ? (
         <LandingPage onLogin={handleLogin} />
       ) : (
