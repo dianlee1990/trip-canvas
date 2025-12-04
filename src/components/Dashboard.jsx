@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, LogOut, Map as MapIcon, Calendar,
   ArrowRight, Loader2, User, MapPin, X,
-  Plane, Globe, Users, Edit3
+  Plane, Globe, Users, Edit3, Trash2 // 🟢 新增 Trash2
 } from 'lucide-react';
 import {
-  collection, doc, setDoc, updateDoc, onSnapshot
+  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, arrayRemove // 🟢 新增 deleteDoc, arrayRemove
 } from 'firebase/firestore';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { db, auth, googleProvider } from '../utils/firebase';
@@ -50,6 +50,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchWrapperRef = useRef(null);
 
+  // 監聽行程列表
   useEffect(() => {
     if (!user) {
       setTrips([]);
@@ -59,14 +60,19 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     const tripsRef = collection(db, 'artifacts', appId, 'trips');
     const unsubscribe = onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // 前端過濾：只顯示我是協作者的行程
       const myTrips = tripList.filter(t =>
         t.collaborators && t.collaborators.includes(user.uid)
       );
+
+      // 排序：新的在前
       myTrips.sort((a, b) => {
         const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
         const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
         return timeB - timeA;
       });
+
       setTrips(myTrips);
       setLoading(false);
     }, (error) => {
@@ -76,6 +82,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     return () => unsubscribe();
   }, [user]);
 
+  // 關閉建議選單
   useEffect(() => {
     function handleClickOutside(event) {
       if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
@@ -136,6 +143,48 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     setShowCreateModal(true);
   };
 
+  // 🟢 智慧刪除邏輯：區分 Owner 與 Collaborator
+  const handleDeleteTrip = async (trip) => {
+    const isOwner = trip.ownerId === user.uid;
+
+    if (isOwner) {
+      // 邏輯 A：我是擁有者，我要刪除整個專案
+      const hasOtherCollaborators = trip.collaborators && trip.collaborators.length > 1;
+      let confirmMsg = "確定要刪除此行程嗎？\n\n此動作將無法復原，所有資料將會消失。";
+      
+      if (hasOtherCollaborators) {
+        confirmMsg = "⚠️ 警告：此行程目前有其他共編者！\n\n若您刪除此行程，所有成員（包含您）都將無法再存取此資料。\n\n您確定要強制刪除嗎？";
+      }
+
+      if (!window.confirm(confirmMsg)) return;
+
+      try {
+        await deleteDoc(doc(db, 'artifacts', appId, 'trips', trip.id));
+        // onSnapshot 會自動更新畫面
+      } catch (error) {
+        console.error("Delete failed:", error);
+        alert("刪除失敗，請檢查網路連線。");
+      }
+
+    } else {
+      // 邏輯 B：我是共編者，我只要退出
+      const confirmMsg = "確定要退出此行程的共編嗎？\n\n退出後，此行程將從您的列表中移除，但其他成員仍可繼續編輯。";
+      if (!window.confirm(confirmMsg)) return;
+
+      try {
+        const tripRef = doc(db, 'artifacts', appId, 'trips', trip.id);
+        await updateDoc(tripRef, {
+          collaborators: arrayRemove(user.uid)
+        });
+        // onSnapshot 會自動更新畫面
+      } catch (error) {
+        console.error("Leave failed:", error);
+        alert("退出失敗，請檢查網路連線。");
+      }
+    }
+  };
+
+  // 建立或更新行程
   const handleSaveTrip = async () => {
     if (!newTrip.title || !newTrip.destination) {
       alert("請填寫行程名稱與目的地");
@@ -271,8 +320,16 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
                   <div key={trip.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden group flex flex-col relative"
                        onClick={() => navigate(`/trip/${trip.id}`)}>
                     
-                    {/* 🟢 修改點：調整按鈕顯示邏輯，手機版恆顯示，桌面版 Hover 才顯示 */}
                     <div className="absolute top-3 right-3 z-20 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      {/* 🟢 新增：刪除按鈕 (紅色垃圾桶) */}
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteTrip(trip); }}
+                        className="bg-white/90 p-2 rounded-full shadow hover:text-red-600 text-gray-500 hover:scale-110 transition-all"
+                        title={trip.ownerId === user.uid ? "刪除行程" : "退出共編"}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+
                       <button 
                         onClick={(e) => { e.stopPropagation(); setShareModalData(trip); }}
                         className="bg-white/90 p-2 rounded-full shadow hover:text-teal-600 text-gray-500 hover:scale-110 transition-all"
@@ -343,10 +400,9 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1.5">旅遊日期</label>
-                {/* 🟢 修改點：改成 grid-cols-1 md:grid-cols-2，手機版垂直排列，電腦版並排 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input type="date" className="w-full border border-gray-300 rounded-xl p-2.5 outline-none" value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} max={newTrip.endDate} />
-                  <input type="date" className="w-full border border-gray-300 rounded-xl p-2.5 outline-none" value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} min={newTrip.startDate} />
+                  <input type="date" className="w-full h-[46px] border border-gray-300 rounded-xl px-4 py-2.5 bg-white outline-none focus:border-teal-500 text-sm" value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} max={newTrip.endDate} />
+                  <input type="date" className="w-full h-[46px] border border-gray-300 rounded-xl px-4 py-2.5 bg-white outline-none focus:border-teal-500 text-sm" value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} min={newTrip.startDate} />
                 </div>
               </div>
 
