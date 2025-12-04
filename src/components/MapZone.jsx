@@ -345,5 +345,5 @@ export default function MapZone({
         )}
       </div>
     </aside>
-  );
+  ); 
 }
