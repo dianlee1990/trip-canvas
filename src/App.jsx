@@ -4,9 +4,7 @@ import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor,
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, orderBy, query, writeBatch, arrayUnion, setDoc } from 'firebase/firestore';
-// 🟢 引入 RTDB 相關函式
-import { ref, onValue, onDisconnect, set, remove } from 'firebase/database';
-import { auth, db, rtdb } from './utils/firebase'; // 記得引入 rtdb
+import { auth, db } from './utils/firebase';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom';
 import { Layout, List, Map as MapIcon, ChevronLeft, ChevronRight, Users, Sparkles, Calendar, Edit3, Save, X, Loader2, Share2, Download } from 'lucide-react';
 
@@ -23,7 +21,7 @@ const libraries = ["places"];
 const DEFAULT_CENTER = { lat: 35.700, lng: 139.770 };
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-// DateEditor 元件 (保持不變)
+// DateEditor 元件
 const DateEditor = ({ startDate, endDate, onSave, onCancel, isSaving }) => {
   const [start, setStart] = useState(startDate || '');
   const [end, setEnd] = useState(endDate || '');
@@ -52,7 +50,7 @@ const DateEditor = ({ startDate, endDate, onSave, onCancel, isSaving }) => {
   );
 }
 
-// --- 時間重算邏輯 (保持不變) ---
+// --- 時間重算邏輯 ---
 const recalculateTimes = (items) => {
   const sortedItems = [...items].sort((a, b) => {
     const dayA = Number(a.day || 1);
@@ -137,10 +135,6 @@ const EditorPage = ({ isLoaded, user }) => {
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [isSavingDate, setIsSavingDate] = useState(false);
 
-  // 🟢 線上人數 State
-  const [onlineCount, setOnlineCount] = useState(0);
-
-  // 1. 處理行程載入與自動加入
   useEffect(() => {
     if (!tripId || !user) return;
     setTripLoading(true);
@@ -176,45 +170,6 @@ const EditorPage = ({ isLoaded, user }) => {
     return () => unsubscribe();
   }, [tripId, user]);
 
-  // 2. 🟢 處理「即時線上狀態」 (Presence System)
-  useEffect(() => {
-    if (!tripId || !user) return;
-
-    // 定義 RTDB 路徑： /presence/{tripId}/{userId}
-    const myPresenceRef = ref(rtdb, `presence/${tripId}/${user.uid}`);
-    const tripPresenceRef = ref(rtdb, `presence/${tripId}`);
-
-    // 當我上線時：寫入資料
-    set(myPresenceRef, {
-      name: user.displayName || "Anonymous",
-      onlineAt: Date.now()
-    });
-
-    // 當我斷線時：自動移除資料
-    onDisconnect(myPresenceRef).remove();
-
-    // 監聽：計算現在有多少人在這個房間
-    const unsubPresence = onValue(tripPresenceRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        // 排除自己，只計算「親友」
-        const count = Object.keys(data).length - 1; 
-        // 或是如果你想要顯示包含自己的總人數，就直接用 length
-        // 但你的需求是「親友」，所以這裡 -1。如果結果 < 0 則歸零
-        setOnlineCount(Math.max(0, count));
-      } else {
-        setOnlineCount(0);
-      }
-    });
-
-    return () => {
-      // 離開頁面時手動移除，不依賴 onDisconnect (反應較慢)
-      remove(myPresenceRef);
-      unsubPresence();
-    };
-  }, [tripId, user]);
-
-  // 3. 載入行程項目
   useEffect(() => {
     if (!tripId) return;
     const itemsRef = collection(db, 'artifacts', appId, 'trips', tripId, 'items');
@@ -226,7 +181,6 @@ const EditorPage = ({ isLoaded, user }) => {
     return () => unsubscribe();
   }, [tripId]);
 
-  // 4. 載入收藏
   useEffect(() => {
     if (!tripId) return;
     const favRef = collection(db, 'artifacts', appId, 'trips', tripId, 'favorites');
@@ -273,6 +227,7 @@ const EditorPage = ({ isLoaded, user }) => {
     }
   };
 
+  // 🟢 修復：統一資料格式
   const handlePlaceSelect = useCallback((place) => {
     const lat = typeof place.lat === 'number' ? place.lat : place.pos?.lat;
     const lng = typeof place.lng === 'number' ? place.lng : place.pos?.lng;
@@ -419,6 +374,9 @@ const EditorPage = ({ isLoaded, user }) => {
     }
   };
 
+  // 🟢 計算共編人數
+  const collaboratorCount = currentTrip?.collaborators?.length || 0;
+
   if (!isLoaded) return <div className="flex h-screen items-center justify-center"> 載入地圖元件中... </div>;
   if (tripLoading) return <div className="flex h-screen items-center justify-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div> 讀取行程資料中... </div>;
   if (error) return <div className="flex h-screen items-center justify-center text-red-500">{error} <button onClick={() => navigate('/')} className="ml-4 text-blue-500 underline"> 回首頁 </button></div>;
@@ -469,12 +427,12 @@ const EditorPage = ({ isLoaded, user }) => {
 
               <div className="flex gap-2 items-center">
                 <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18}/></button>
-                {/* 🟢 修正 Bug 1: 手機版只在有親友(>0)時才顯示紅點 */}
                 <div className="relative">
                   <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
-                  {onlineCount > 0 && (
-                    <span className="absolute -bottom-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full border-2 border-white shadow-sm animate-pulse">
-                      {onlineCount}
+                  {/* 🟢 關鍵新增：手機版共編人數紅點 */}
+                  {collaboratorCount > 1 && (
+                    <span className="absolute -bottom-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full border-2 border-white shadow-sm">
+                      {collaboratorCount}
                     </span>
                   )}
                 </div>
@@ -520,12 +478,12 @@ const EditorPage = ({ isLoaded, user }) => {
 
               <div className="flex gap-2 items-center">
                 <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18}/></button>
-                {/* 🟢 同步修正地圖頁的分享紅點 */}
                 <div className="relative">
                   <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
-                  {onlineCount > 0 && (
-                    <span className="absolute -bottom-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full border-2 border-white shadow-sm animate-pulse">
-                      {onlineCount}
+                  {/* 🟢 關鍵新增：手機版地圖頁共編人數紅點 */}
+                  {collaboratorCount > 1 && (
+                    <span className="absolute -bottom-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full border-2 border-white shadow-sm">
+                      {collaboratorCount}
                     </span>
                   )}
                 </div>
