@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { logEvent } from './utils/analytics';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
@@ -313,9 +314,23 @@ const EditorPage = ({ isLoaded, user }) => {
     if (window.innerWidth < 768) setMobileTab('canvas');
   }, [tripId, activeDay, itinerary]);
 
-  const handleRemoveFromItinerary = useCallback(async (id) => {
+  // src/App.jsx (EditorPage component 內)
+
+    const handleRemoveFromItinerary = useCallback(async ( id ) => {
+        // 1. 找出要刪除的項目資料 (為了埋點)
+        const itemToRemove = itinerary.find(item => item.id === id);
+    
+        // 2. 觸發埋點：記錄刪除事件
+        logEvent('delete_item', tripId, user?.uid, {
+        itemId: id,
+        name: itemToRemove?.name || 'Unknown',
+        aiSummary: itemToRemove?.aiSummary || '',
+        source: itemToRemove?.source || 'manual' // 區分是 AI 生成還是手動加入
+        });
+  
+    // 3. 執行刪除
     await deleteDoc(doc(db, 'artifacts', appId, 'trips', tripId, 'items', id));
-  }, [tripId]);
+  }, [tripId, itinerary, user]); // 🟢 注意：這裡補上了 itinerary 和 user 作為依賴
 
   const handleAIGenerate = useCallback(async (generatedData, targetDays) => {
     setIsAIModalOpen(false); setIsGenerating(false); setAiStatus("排程完成");
@@ -363,20 +378,38 @@ const EditorPage = ({ isLoaded, user }) => {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const handleDragStart = (event) => setActiveDragItem(event.active.data.current?.item || null);
-  const handleDragEnd = async (event) => {
+  // src/App.jsx (EditorPage component 內)
+
+const handleDragEnd = async ( event ) => {
     const { active, over } = event;
     setActiveDragItem(null);
     if (!over) return;
-    if (active.data.current?.type === 'sidebar-item') { handleAddToItinerary(active.data.current.item); return; }
+    
+    if (active.data.current?.type === 'sidebar-item') { 
+      handleAddToItinerary(active.data.current.item); 
+      return; 
+    }
+    
     if (active.id !== over.id) {
-      const oldIndex = itinerary.findIndex((item) => item.id === active.id);
-      const newIndex = itinerary.findIndex((item) => item.id === over.id);
+      const oldIndex = itinerary.findIndex(( item ) => item.id === active.id);
+      const newIndex = itinerary.findIndex(( item ) => item.id === over.id);
+      
       if (oldIndex === -1 || newIndex === -1) return;
+  
+      // 🟢 觸發埋點：記錄排序變更
+      logEvent('reorder_item', tripId, user?.uid, {
+        itemId: active.id,
+        itemName: itinerary[oldIndex]?.name,
+        oldIndex: oldIndex,
+        newIndex: newIndex
+      });
+  
       const newItinerary = arrayMove(itinerary, oldIndex, newIndex);
       setItinerary(recalculateTimes(newItinerary));
+      
       try {
         const batch = writeBatch(db);
-        newItinerary.forEach((item, index) => {
+        newItinerary.forEach(( item ,  index ) => {
           const itemRef = doc(db, 'artifacts', appId, 'trips', tripId, 'items', item.id);
           batch.update(itemRef, { order: index });
         });
