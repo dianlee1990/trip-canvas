@@ -423,24 +423,43 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   }, [user]);
 
   const handleLogin = async () => {
-    if (!auth) { alert("Firebase Auth 未初始化"); return; }
+    if (!auth) { 
+      console.error("Firebase Auth not initialized");
+      alert("系統錯誤：登入服務未啟動，請重新整理網頁。"); 
+      return; 
+    }
+    
     try { 
+      // 🟢 使用 setPersistence 確保登入狀態持久化 (選填，但推薦)
+      // await setPersistence(auth, browserLocalPersistence); 
+      
       const result = await signInWithPopup(auth, googleProvider); 
       const user = result.user;
       
-      // 🟢 關鍵新增：登入時，將用戶資料寫入 'users' 集合，讓其他人可以查到名字
-      // 使用 setDoc + merge: true，避免覆蓋掉未來可能新增的其他欄位
-      await setDoc(doc(db, "users", user.uid), {
-        uid: user.uid,
-        displayName: user.displayName || "Unknown User",
-        email: user.email || "",
-        photoURL: user.photoURL || "",
-        lastLogin: new Date().toISOString()
-      }, { merge: true });
+      // 🟢 登入成功後，寫入/更新使用者資料庫
+      try {
+        await setDoc(doc(db, "users", user.uid), {
+          uid: user.uid,
+          displayName: user.displayName || "Unknown",
+          email: user.email || "",
+          photoURL: user.photoURL || "",
+          lastLogin: new Date().toISOString()
+        }, { merge: true });
+        console.log("✅ User data synced to Firestore");
+      } catch (dbError) {
+        console.warn("⚠️ Firestore sync failed (可能是權限問題，但不影響登入):", dbError);
+        // 不阻擋登入流程，讓用戶繼續使用
+      }
 
-      console.log("✅ 登入成功並更新使用者資料！User:", user);
+      console.log("✅ 登入成功！User:", user.displayName);
     } catch (error) { 
-      console.error("❌ Login failed 詳細錯誤:", error); 
+      // 🟢 過濾掉「用戶自己關閉視窗」的錯誤，不顯示煩人的 Alert
+      if (error.code === 'auth/popup-closed-by-user') {
+        console.log("使用者取消了登入");
+        return;
+      }
+      
+      console.error("❌ Login failed:", error); 
       alert(`登入失敗 (${error.code}): ${error.message}`);
     }
   };
