@@ -227,32 +227,43 @@ const EditorPage = ({ isLoaded, user }) => {
     }
   };
 
-  // 🟢 修復：統一資料格式
-  const handlePlaceSelect = useCallback((place) => {
-    const lat = typeof place.lat === 'number' ? place.lat : place.pos?.lat;
-    const lng = typeof place.lng === 'number' ? place.lng : place.pos?.lng;
-    if (!lat || !lng) return;
-    const normalizedPlace = {
-      ...place,
-      lat: lat,
-      lng: lng,
-      pos: { lat, lng },
-      id: place.id,
-      place_id: place.place_id || place.id
-    };
-    setSelectedPlace(normalizedPlace);
-    if (mapInstance) { 
-      mapInstance.panTo({ lat, lng }); 
-      mapInstance.setZoom(15); 
-    }
-    if (window.innerWidth < 768) setMobileTab('map');
-  }, [mapInstance]);
-
   const handleUpdateItem = useCallback(async (itemId, updatedFields) => {
     if (!tripId) return;
     const itemRef = doc(db, 'artifacts', appId, 'trips', tripId, 'items', itemId);
     await updateDoc(itemRef, updatedFields);
   }, [tripId]);
+
+  // 🟢 修復：統一資料格式，確保地圖與 POI 都能正確觸發
+  const handlePlaceSelect = useCallback((place) => {
+    // 1. 正規化座標：無論是 lat/lng 還是 pos.lat/pos.lng，都抓出來
+    const lat = typeof place.lat === 'number' ? place.lat : place.pos?.lat;
+    const lng = typeof place.lng === 'number' ? place.lng : place.pos?.lng;
+
+    // 防呆：如果沒座標就不處理
+    if (!lat || !lng) return;
+
+    // 2. 建立標準化物件 (補上 pos 屬性，讓 MapZone 看得懂)
+    const normalizedPlace = {
+      ...place,
+      lat: lat,
+      lng: lng,
+      pos: { lat, lng }, // 關鍵修正：手動補上 pos 物件
+      // 確保 ID 格式一致 (Canvas 來的叫 place_id, Sidebar 來的叫 id)
+      id: place.id,
+      place_id: place.place_id || place.id
+    };
+
+    setSelectedPlace(normalizedPlace);
+
+    // 3. 立即移動地圖 (現在保證有 lat/lng 了)
+    if (mapInstance) { 
+      mapInstance.panTo({ lat, lng }); 
+      mapInstance.setZoom(15); 
+    }
+    
+    // 4. 手機版自動切換到地圖頁籤
+    if (window.innerWidth < 768) setMobileTab('map');
+  }, [mapInstance]);
 
   const toggleFavorite = useCallback(async (item) => {
     if (!tripId) return;
@@ -374,9 +385,6 @@ const EditorPage = ({ isLoaded, user }) => {
     }
   };
 
-  // 🟢 計算共編人數
-  const collaboratorCount = currentTrip?.collaborators?.length || 0;
-
   if (!isLoaded) return <div className="flex h-screen items-center justify-center"> 載入地圖元件中... </div>;
   if (tripLoading) return <div className="flex h-screen items-center justify-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div> 讀取行程資料中... </div>;
   if (error) return <div className="flex h-screen items-center justify-center text-red-500">{error} <button onClick={() => navigate('/')} className="ml-4 text-blue-500 underline"> 回首頁 </button></div>;
@@ -427,15 +435,7 @@ const EditorPage = ({ isLoaded, user }) => {
 
               <div className="flex gap-2 items-center">
                 <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18}/></button>
-                <div className="relative">
-                  <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
-                  {/* 🟢 關鍵新增：手機版共編人數紅點 */}
-                  {collaboratorCount > 1 && (
-                    <span className="absolute -bottom-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full border-2 border-white shadow-sm">
-                      {collaboratorCount}
-                    </span>
-                  )}
-                </div>
+                <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
               </div>
             </div>
 
@@ -476,17 +476,10 @@ const EditorPage = ({ isLoaded, user }) => {
                 />
               )}
 
+              {/* 🟢 補上分享與匯出按鈕 (與排行程頁面一致) */}
               <div className="flex gap-2 items-center">
                 <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18}/></button>
-                <div className="relative">
-                  <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
-                  {/* 🟢 關鍵新增：手機版地圖頁共編人數紅點 */}
-                  {collaboratorCount > 1 && (
-                    <span className="absolute -bottom-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full border-2 border-white shadow-sm">
-                      {collaboratorCount}
-                    </span>
-                  )}
-                </div>
+                <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
               </div>
             </div>
 
