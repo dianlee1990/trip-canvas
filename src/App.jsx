@@ -6,7 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, orderBy, query, writeBatch, arrayUnion, setDoc } from 'firebase/firestore';
 import { auth, db } from './utils/firebase';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Navigate } from 'react-router-dom';
-import { Layout, List, Map as MapIcon, ChevronLeft, ChevronRight, Users, Sparkles, Calendar, Edit3, Save, X, Loader2, Share2, Download } from 'lucide-react'; // 🟢 引入 Share2, Download
+import { Layout, List, Map as MapIcon, ChevronLeft, ChevronRight, Users, Sparkles, Calendar, Edit3, Save, X, Loader2, Share2, Download } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
@@ -233,9 +233,35 @@ const EditorPage = ({ isLoaded, user }) => {
     await updateDoc(itemRef, updatedFields);
   }, [tripId]);
 
+  // 🟢 修復：統一資料格式，確保地圖與 POI 都能正確觸發
   const handlePlaceSelect = useCallback((place) => {
-    setSelectedPlace(place);
-    if (mapInstance && place?.pos) { mapInstance.panTo(place.pos); mapInstance.setZoom(15); }
+    // 1. 正規化座標：無論是 lat/lng 還是 pos.lat/pos.lng，都抓出來
+    const lat = typeof place.lat === 'number' ? place.lat : place.pos?.lat;
+    const lng = typeof place.lng === 'number' ? place.lng : place.pos?.lng;
+
+    // 防呆：如果沒座標就不處理
+    if (!lat || !lng) return;
+
+    // 2. 建立標準化物件 (補上 pos 屬性，讓 MapZone 看得懂)
+    const normalizedPlace = {
+      ...place,
+      lat: lat,
+      lng: lng,
+      pos: { lat, lng }, // 關鍵修正：手動補上 pos 物件
+      // 確保 ID 格式一致 (Canvas 來的叫 place_id, Sidebar 來的叫 id)
+      id: place.id,
+      place_id: place.place_id || place.id
+    };
+
+    setSelectedPlace(normalizedPlace);
+
+    // 3. 立即移動地圖 (現在保證有 lat/lng 了)
+    if (mapInstance) { 
+      mapInstance.panTo({ lat, lng }); 
+      mapInstance.setZoom(15); 
+    }
+    
+    // 4. 手機版自動切換到地圖頁籤
     if (window.innerWidth < 768) setMobileTab('map');
   }, [mapInstance]);
 
@@ -385,7 +411,7 @@ const EditorPage = ({ isLoaded, user }) => {
 
           {/* 中間 Canvas */}
           <div className={`${mobileTab === 'canvas' ? 'flex flex-col w-full h-full' : 'hidden'} md:flex md:flex-col md:w-[28rem] md:shrink-0 md:h-full z-20 bg-white`}>
-            {/* 🟢 Mobile Header for Canvas */}
+            {/* Mobile Header for Canvas */}
             <div className="md:hidden bg-white border-b px-2 py-2 flex justify-between items-center shrink-0 shadow-sm z-50 relative">
               <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24}/></button>
 
@@ -407,7 +433,6 @@ const EditorPage = ({ isLoaded, user }) => {
                 />
               )}
 
-              {/* 🟢 修改：移除 AI 按鈕，換成 Export 和 Share */}
               <div className="flex gap-2 items-center">
                 <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18}/></button>
                 <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
@@ -423,16 +448,17 @@ const EditorPage = ({ isLoaded, user }) => {
                 onPlaceSelect={handlePlaceSelect} onBack={() => navigate('/')}
                 handleUpdateItem={handleUpdateItem}
                 onOpenShare={() => setShowShareModal(true)}
-                onOpenExport={() => setIsExportModalOpen(true)} // 🟢 傳入 onOpenExport
+                onOpenExport={() => setIsExportModalOpen(true)}
               />
               <div className="h-24 md:hidden shrink-0"></div>
             </div>
           </div>
 
           <div className={`${mobileTab === 'map' ? 'flex flex-col w-full' : 'hidden'} md:flex md:flex-col md:flex-1 h-full z-10`}>
-            {/* Mobile Header for Map (Optional: keep consistent or simple) */}
+            {/* Mobile Header for Map */}
             <div className="md:hidden bg-white border-b px-2 py-2 flex justify-between items-center shrink-0 shadow-sm z-50 relative">
               <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24}/></button>
+              
               <div className="flex items-center gap-1 bg-gray-100 rounded-full px-1 py-1">
                 <button onClick={() => setActiveDay(p => Math.max(1, p - 1))} disabled={activeDay <= 1} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronLeft size={16}/></button>
                 <span className="text-sm font-bold text-gray-700 min-w-[3rem] text-center">Day {activeDay}</span>
@@ -450,8 +476,10 @@ const EditorPage = ({ isLoaded, user }) => {
                 />
               )}
 
+              {/* 🟢 補上分享與匯出按鈕 (與排行程頁面一致) */}
               <div className="flex gap-2 items-center">
-                 {/* Map view tools, keep minimal */}
+                <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18}/></button>
+                <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
               </div>
             </div>
 
@@ -462,7 +490,7 @@ const EditorPage = ({ isLoaded, user }) => {
                 mapCenter={mapCenter} selectedPlace={selectedPlace} onPlaceSelect={handlePlaceSelect}
                 setMapBounds={setMapBounds} myFavorites={myFavorites} toggleFavorite={toggleFavorite}
                 activeDay={activeDay}
-                currentTrip={currentTrip} // 🟢 傳入 currentTrip
+                currentTrip={currentTrip}
               />
             </div>
           </div>

@@ -2,124 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --- 🖥️ 螢幕顯示專用設定 (Screen Base Styles) --- */
-
-/* 1. 確保 React App 佔滿全螢幕，防止版面坍塌 */
 html, body, #root {
   height: 100%;
   width: 100%;
   margin: 0;
   padding: 0;
-  /* 關鍵：隱藏外層捲軸，交由內層容器 (如 Sidebar/Canvas) 滾動 */
-  overflow: hidden; 
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
-/* 2. 自定義滾動條 (美化 Sidebar 與 Canvas) */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.5); /* gray-400 */
-  border-radius: 20px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(107, 114, 128, 0.8); /* gray-500 */
-}
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(156, 163, 175, 0.5); border-radius: 20px; }
 
-/* 3. 日式直排文字 (給匯出功能用) */
 .writing-vertical {
   writing-mode: vertical-rl;
-  text-orientation: mixed;
+  text-orientation: upright;
+  letter-spacing: 0.1em;
 }
 
-/* --- 🖨️ 列印與匯出修正 (Print Only) --- */
-/* 這些樣式只有在按下「列印」或「存為 PDF」時才會生效 */
+/* --- A4 紙張設定 --- */
+.a4-page {
+  width: 210mm;
+  height: 297mm;
+  background: white;
+  margin: 0 auto 20px auto;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  page-break-after: always;
+  break-after: page;
+}
+
+/* --- Diary 風格：方格紙背景 (新) --- */
+.notebook-grid {
+  background-color: #fff;
+  background-image: 
+    linear-gradient(#e5e7eb 1px, transparent 1px),
+    linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* --- Manga 風格：強效網點 (修正) --- */
+.screentone {
+  /* 增加黑點濃度與對比 */
+  background-image: radial-gradient(circle, #000 25%, transparent 26%);
+  background-size: 4px 4px;
+  opacity: 0.15; /* 微微透出，不要太淡 */
+}
+.comic-filter {
+  filter: contrast(120%) brightness(105%);
+}
+.speed-lines-radial {
+  background: repeating-conic-gradient(from 0deg, transparent 0deg 5deg, rgba(0,0,0,0.1) 5deg 5.5deg);
+}
+
+.speech-bubble-boom {
+  background: white; border: 3px solid black; padding: 12px;
+  clip-path: polygon(0% 15%, 5% 10%, 0% 0%, 15% 5%, 25% 0%, 35% 10%, 50% 0%, 65% 10%, 75% 0%, 85% 5%, 100% 0%, 95% 15%, 100% 25%, 90% 35%, 100% 50%, 90% 65%, 100% 75%, 95% 85%, 100% 100%, 85% 95%, 75% 100%, 65% 90%, 50% 100%, 35% 90%, 25% 100%, 15% 95%, 0% 100%, 5% 85%, 0% 75%, 10% 65%, 0% 50%, 10% 35%, 0% 25%);
+  box-shadow: 4px 4px 0 #000;
+}
+.panel-slant-right { clip-path: polygon(0 0, 100% 0, 85% 100%, 0% 100%); border-right: 4px solid black; }
+.panel-slant-left { clip-path: polygon(15% 0, 100% 0, 100% 100%, 0 100%); }
+.panel-jagged-bottom { clip-path: polygon(0 0, 100% 0, 100% 90%, 50% 100%, 0 90%); }
+
+/* --- 列印強制設定 --- */
 @media print {
-  /* 1. 隱藏所有網頁介面元素 (Sidebar, Header, Maps) */
-  body * {
-    visibility: hidden;
-  }
-
-  /* 2. 唯一顯示：我們指定的列印區域 */
-  #print-area, #print-area * {
-    visibility: visible;
-  }
-
-  /* 3. 設定紙張環境 */
-  @page {
-    size: A4 portrait;
-    margin: 0; /* 由我們的 CSS 控制邊距 */
-  }
-
-  /* 4. 強制還原背景色與圖形 (解決白底問題) */
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }
-
-  /* 5. 核心排版：強制將內容鎖定為電腦版寬度並縮放 */
-  /* 這能解決「手機版樣式跑出來」的問題 */
-  #print-area {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    
-    /* 鎖定寬度：確保雙欄排版 (md:grid-cols-2) 生效 */
-    width: 1100px !important;
-    min-width: 1100px !important;
-    max-width: 1100px !important;
-    
-    /* 解除高度限制，讓內容自然流動到下一頁 */
+  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  @page { size: A4 portrait; margin: 0; }
+  
+  html, body, #root {
     height: auto !important;
+    min-height: 100% !important;
     overflow: visible !important;
-    
-    /* 縮放：將 1100px 的內容縮小塞進 A4 紙張 (約 794px) */
-    transform: scale(0.7) !important;
-    transform-origin: top left !important;
-    
+  }
+
+  .a4-page {
     margin: 0 !important;
-    padding: 40px !important; /* 增加一點列印邊距 */
-    background-color: white !important;
     box-shadow: none !important;
+    width: 100% !important; 
+    height: 297mm !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    overflow: hidden !important;
+    position: relative !important;
   }
 
-  /* 6. 重設 Body 屬性以允許列印長頁面 */
-  html, body {
-    height: auto !important;
-    width: auto !important;
-    min-width: 1100px !important;
-    overflow: visible !important;
-    background: white !important;
-  }
-
-  /* 7. 防止圖片與文字在分頁處被切斷 */
-  img {
-    break-inside: avoid;
-    max-width: 100% !important;
-  }
+  body * { visibility: hidden; }
+  [data-reactroot] *, .a4-page, .a4-page * { visibility: visible; }
   
-  /* 避免標題留在上一頁底部 */
-  h1, h2, h3 {
-    break-after: avoid;
-  }
-
-  /* 8. 確保每一天的行程區塊盡量完整 */
-  .break-inside-avoid {
-    page-break-inside: avoid;
-    break-inside: avoid;
-    margin-bottom: 2rem;
-  }
-  
-  /* 9. 修復日式直排在列印時的兼容性 */
-  .writing-vertical {
-    -webkit-writing-mode: vertical-rl;
-    writing-mode: vertical-rl;
-  }
+  .a4-page { position: relative; left: auto; top: auto; }
 }

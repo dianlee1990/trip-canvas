@@ -19,32 +19,29 @@ export default {
           mangaTitle: ['Knewave', 'cursive'],
         },
         colors: {
-          'diary-bg': '#FFF0F5', 
+          // Diary Style
+          'diary-bg': '#FFF0F5',
           'diary-pink': '#FF9EB5',
           'diary-text': '#5D4037',
+          'diary-blue': '#A2D2FF',
+          'diary-yellow': '#FBE7C6',
+          'diary-green': '#E2F0CB',
+          // Art Style
           'art-dark': '#0a0a0a',
           'art-gold': '#D4AF37',
+          // Manga
           'manga-ink': '#111',
-          'manga-paper': '#fff',
-          'manga-screen': '#ccc',
         },
         boxShadow: {
-          'float': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-          'magazine': '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-          'sticker': '3px 3px 0px rgba(0,0,0,0.1)',
+          'magazine': '0 20px 40px -10px rgba(0,0,0,0.3)',
+          'polaroid': '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
           'comic': '4px 4px 0px 0px #000',
+          'comic-boom': '8px 8px 0px 0px #000',
+          'sticker': '3px 3px 0px rgba(0,0,0,0.1)',
         },
-        dropShadow: {
-          'art-text': '0 2px 4px rgba(0,0,0,0.8)',
-        },
-        animation: {
-          'in': 'fadeIn 0.3s ease-out',
-        },
-        keyframes: {
-          fadeIn: {
-            '0%': { opacity: '0' },
-            '100%': { opacity: '1' },
-          }
+        backgroundImage: {
+          'paper-texture': "url('https://www.transparenttextures.com/patterns/cream-paper.png')",
+          'dot-pattern-dense': "radial-gradient(#FF9EB5 20%, transparent 21%)",
         }
       },
     },

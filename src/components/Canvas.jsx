@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Clock, MapPin, Trash2, GripVertical, DollarSign,
   Share2, Sparkles, ChevronLeft, ChevronRight, Save, Edit3, X,
-  Loader2, Star, ExternalLink, Globe, CalendarCheck, Ticket, Download // 🟢 記得引入 Download
+  Loader2, Star, ExternalLink, Globe, CalendarCheck, Ticket, Download
 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -29,7 +29,7 @@ const getAffiliateLink = (item) => {
     };
   }
   if (item.url && (item.url.includes('inline') || item.url.includes('opentable') || item.url.includes('eztable'))) {
-     return {
+    return {
       url: item.url,
       label: '訂位',
       isAffiliate: false,
@@ -75,8 +75,7 @@ const DurationPickerPopover = ({ onSave, onClose }) => {
     <div className="absolute top-8 left-0 bg-white border border-gray-200 shadow-2xl rounded-lg z-[100] w-36 max-h-60 overflow-y-auto custom-scrollbar p-1">
       {durationOptions.map(m => (
         <div key={m} onClick={() => onSave(m)} className="px-3 py-2 text-sm cursor-pointer hover:bg-teal-50 hover:text-teal-700 rounded text-gray-600 font-medium">
-          {m < 60 ? `${m} 分鐘` : `${Math.floor(m / 60)} 小時 ${m % 60 > 0 ?
-            m % 60 + '分' : ''}`}
+          {m < 60 ? `${m} 分鐘` : `${Math.floor(m / 60)} 小時 ${m % 60 > 0 ? m % 60 + '分' : ''}`}
         </div>
       ))}
     </div>
@@ -98,6 +97,7 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
   };
 
   const googleMapsUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}&query_place_id=${item.place_id || ''}`;
+  const affiliate = getAffiliateLink(item);
 
   const handleTimeSave = (newTime) => {
     onUpdateItem(item.id, { startTime: newTime });
@@ -151,41 +151,76 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
           ) : (
             <div className="flex flex-wrap gap-1 mt-2">{item.tags?.slice(0, 3).map((tag, i) => <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">#{tag}</span>)}</div>
           )}
-          <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-50">
-            <div className="relative">
-              <button onClick={(e) => { e.stopPropagation(); setShowDurationPicker(!showDurationPicker);
-              }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
-                <Clock size={12} /> <span className="font-medium">{item.suggestedDuration ||
-                  60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
-              </button>
-              {showDurationPicker && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowDurationPicker(false); }}></div>
-                  <DurationPickerPopover onSave={handleDurationSave} onClose={() => setShowDurationPicker(false)} />
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {(() => {
-                const affiliate = getAffiliateLink(item);
-                if (affiliate) {
-                  return (
-                    <a href={affiliate.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors border ${affiliate.colorClass}`} title={affiliate.label}>
-                      <Ticket size={12} /> {affiliate.label}
+
+          {/* 🟢 Mobile & Desktop Split Layout for Buttons */}
+          <div className="mt-3 pt-2 border-t border-gray-50">
+            
+            {/* 🟢 1. 手機版佈局：分兩排 */}
+            <div className="md:hidden flex flex-col gap-3">
+               {/* 上排：重要行動 (查價 + 地圖) - 加大點擊範圍 */}
+               <div className="flex gap-2 w-full">
+                  {affiliate ? (
+                    <a href={affiliate.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex-1 flex items-center justify-center gap-1 py-2.5 rounded-lg text-xs font-bold border transition-colors ${affiliate.colorClass}`}>
+                       <Ticket size={14} /> {affiliate.label}
                     </a>
-                  );
-                } else if (item.url) {
-                  return (
-                    <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors border bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100" title="前往官網">
-                      <Globe size={12} /> 官網
+                  ) : item.url ? (
+                    <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center gap-1 py-2.5 rounded-lg text-xs font-bold border bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100">
+                       <Globe size={14} /> 官網
                     </a>
-                  );
-                }
-              })()}
-              <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-blue-600 flex items-center gap-1 text-[10px] bg-gray-50 px-2 py-1 rounded hover:bg-blue-50 transition-colors border border-gray-100" title="在 Google 地圖查看評論"><MapPin size={12} /> 地圖/評論 </a>
-              <button onClick={(e) => { e.stopPropagation(); onRemove(item.id);
-              }} className="text-gray-300 hover:text-red-500 p-1 ml-1 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+                  ) : null}
+                  
+                  <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex-1 flex items-center justify-center gap-1 py-2.5 bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-lg text-xs font-bold border border-gray-100 transition-colors ${!affiliate && !item.url ? 'w-full' : ''}`}>
+                     <MapPin size={14} /> 地圖/評論
+                  </a>
+               </div>
+
+               {/* 下排：次要行動 (時間 + 刪除) - 左右分開 */}
+               <div className="flex items-center justify-between px-1">
+                  <div className="relative">
+                    <button onClick={(e) => { e.stopPropagation(); setShowDurationPicker(!showDurationPicker); }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
+                      <Clock size={12} /> <span className="font-medium">{item.suggestedDuration || 60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
+                    </button>
+                    {showDurationPicker && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowDurationPicker(false); }}></div>
+                        <DurationPickerPopover onSave={handleDurationSave} onClose={() => setShowDurationPicker(false)} />
+                      </>
+                    )}
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); onRemove(item.id); }} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
+                     <Trash2 size={16} />
+                  </button>
+               </div>
             </div>
+
+            {/* 🔵 2. 桌面版佈局：維持原本單排 */}
+            <div className="hidden md:flex items-center justify-between">
+              <div className="relative">
+                <button onClick={(e) => { e.stopPropagation(); setShowDurationPicker(!showDurationPicker); }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
+                  <Clock size={12} /> <span className="font-medium">{item.suggestedDuration || 60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
+                </button>
+                {showDurationPicker && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowDurationPicker(false); }}></div>
+                    <DurationPickerPopover onSave={handleDurationSave} onClose={() => setShowDurationPicker(false)} />
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {affiliate ? (
+                  <a href={affiliate.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors border ${affiliate.colorClass}`} title={affiliate.label}>
+                    <Ticket size={12} /> {affiliate.label}
+                  </a>
+                ) : item.url ? (
+                  <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors border bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100" title="前往官網">
+                    <Globe size={12} /> 官網
+                  </a>
+                ) : null}
+                <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-blue-600 flex items-center gap-1 text-[10px] bg-gray-50 px-2 py-1 rounded hover:bg-blue-50 transition-colors border border-gray-100" title="在 Google 地圖查看評論"><MapPin size={12} /> 地圖/評論 </a>
+                <button onClick={(e) => { e.stopPropagation(); onRemove(item.id); }} className="text-gray-300 hover:text-red-500 p-1 ml-1 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
@@ -269,7 +304,6 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
           <div className="flex items-center gap-2">
             <h2 className="font-bold text-lg text-gray-800 line-clamp-1 max-w-[150px]" title={currentTrip?.title}>{currentTrip?.title || "未命名行程"}</h2>
           </div>
-          {/* 🟢 修改：移除 AI 按鈕，加入匯出按鈕並與分享排在一起 */}
           <div className="flex gap-2">
             <button onClick={onOpenShare} className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-full" title="分享與邀請">
               <Share2 size={18} />
@@ -303,7 +337,7 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
 
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-gray-50/50 pb-24 md:pb-4">
         {isGenerating && <div className="flex flex-col items-center justify-center py-10 space-y-4"><Loader2 className="animate-spin text-purple-600" size={32} /><p className="text-sm font-medium text-purple-700">{aiStatus}</p></div>}
-        
+
         {!isGenerating && currentDayItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 m-4 space-y-6">
             <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-2">
@@ -315,7 +349,7 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
                 不知道要去哪裡嗎？讓 AI 幫你安排順路的景點與美食吧！
               </p>
             </div>
-            <button 
+            <button
               onClick={() => setIsAIModalOpen(true)}
               className="bg-purple-600 text-white px-6 py-2.5 rounded-full font-bold shadow-md hover:bg-purple-700 hover:shadow-lg transition-all flex items-center gap-2"
             >

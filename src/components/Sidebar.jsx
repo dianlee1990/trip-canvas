@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Map, Search, Sparkles, Heart, Plus, Loader2, DollarSign, Clock, Navigation, AlertTriangle,
-  ChevronLeft, Camera, Coffee, ShoppingBag, Bed, Activity, Utensils,
+  ChevronLeft, Camera, ShoppingBag, Bed, Activity, Utensils,
   Beer, Landmark, Train, Mountain
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
@@ -102,7 +102,7 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
   );
 };
 
-export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggleFavorite, handleAddToItinerary, isMapScriptLoaded, mapInstance, mapCenter, onPlaceSelect, mapBounds, onBack, onOpenAI }) {
+export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggleFavorite, handleAddToItinerary, isMapScriptLoaded, mapInstance, mapCenter, onPlaceSelect, mapBounds, onBack, onOpenAI, onOpenShare, onOpenExport }) {
   const [searchInput, setSearchInput] = useState('');
   const [textSearchResults, setTextSearchResults] = useState([]);
   const [aiRecommendations, setAiRecommendations] = useState([]);
@@ -378,25 +378,43 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     <aside className="w-full h-full flex flex-col z-20 bg-white border-r border-gray-200 relative">
       <div ref={placesServiceRef} className="absolute top-0 left-0 w-0 h-0 overflow-hidden"></div>
 
+      {/* Header */}
       <div className="h-16 min-h-16 max-h-16 border-b border-gray-200 flex items-center justify-between px-4 bg-white shrink-0 relative z-20">
-        <div className="flex items-center">
-          <button onClick={onBack} className="mr-3 p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-teal-700 transition-colors cursor-pointer" title="回到儀表板">
+        <div className="flex items-center flex-1">
+          <button onClick={onBack} className="mr-3 p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-teal-700 transition-colors cursor-pointer shrink-0" title="回到儀表板">
             <ChevronLeft size={24} />
           </button>
-          <div className="flex items-center gap-2">
+          
+          {/* 🟢 Mobile Header Search: 手機版顯示搜尋框，桌面版顯示 Logo */}
+          <div className="flex-1 md:hidden">
+             <div className="relative">
+                <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="搜尋地點..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
+                />
+                {isLoading && isSearchMode && <Loader2 size={16} className="absolute right-3 top-2.5 animate-spin text-teal-600"/>}
+             </div>
+          </div>
+
+          {/* 🟢 Desktop Logo: 手機版隱藏，桌面版顯示 */}
+          <div className="hidden md:flex items-center gap-2">
             <Map className="text-teal-700" size={24}/>
             <span className="font-bold text-teal-700 text-lg">TripCanvas</span>
           </div>
         </div>
-        
-        {/* 🟢 修改：移除 Sidebar 右側的所有按鈕 */}
+
         <div className="flex items-center gap-2 ml-auto">
-          {/* Empty */}
+          {/* Empty right side */}
         </div>
       </div>
 
       <div className="p-4 border-b border-gray-100">
-        <div className="relative mb-3">
+        {/* 🟢 Desktop Search: 手機版隱藏，桌面版顯示 */}
+        <div className="relative mb-3 hidden md:block">
           <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
           <input
             type="text"
@@ -495,12 +513,12 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       </div>
 
       <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-30 w-full px-6 pointer-events-none">
-        <button 
+        <button
           onClick={onOpenAI}
           className="pointer-events-auto w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2 font-bold text-sm border border-white/20"
         >
           <Sparkles size={18} className="animate-pulse"/>
-          <span>AI 智慧排程</span>
+          <span> AI 智慧排程 </span>
         </button>
       </div>
     </aside>
