@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+// 🟢 關鍵修正：補回所有 LandingPage 需要的 Icons，防止白畫面
 import {
   Plus, LogOut, Map as MapIcon, Calendar,
   ArrowRight, Loader2, User, MapPin, X,
@@ -15,23 +16,17 @@ import { db, auth, googleProvider } from '../utils/firebase';
 import { useNavigate } from 'react-router-dom';
 import ShareModal from './modals/ShareModal';
 
+// Google Autocomplete & DatePicker
+import { Autocomplete } from '@react-google-maps/api';
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+
+// ⚠️ 暫時不引入 date-fns locale，使用預設英文以確保穩定性
+
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-const POPULAR_DESTINATIONS = [
-  { name: "Taipei, Taiwan", label: "台北, 台灣", keywords: ["taipei", "台北", "taiwan"], lat: 25.0330, lng: 121.5654 },
-  { name: "Tokyo, Japan", label: "東京, 日本", keywords: ["tokyo", "東京", "japan"], lat: 35.6762, lng: 139.6503 },
-  { name: "Osaka, Japan", label: "大阪, 日本", keywords: ["osaka", "大阪"], lat: 34.6937, lng: 135.5023 },
-  { name: "Kyoto, Japan", label: "京都, 日本", keywords: ["kyoto", "京都"], lat: 35.0116, lng: 135.7681 },
-  { name: "Seoul, South Korea", label: "首爾, 韓國", keywords: ["seoul", "首爾", "korea"], lat: 37.5665, lng: 126.9780 },
-  { name: "Bangkok, Thailand", label: "曼谷, 泰國", keywords: ["bangkok", "曼谷", "thailand"], lat: 13.7563, lng: 100.5018 },
-  { name: "London, UK", label: "倫敦, 英國", keywords: ["london", "倫敦", "uk"], lat: 51.5074, lng: -0.1278 },
-  { name: "Paris, France", label: "巴黎, 法國", keywords: ["paris", "巴黎", "france"], lat: 48.8566, lng: 2.3522 },
-  { name: "New York, USA", label: "紐約, 美國", keywords: ["new york", "紐約", "usa"], lat: 40.7128, lng: -74.0060 },
-];
-
+// --- Landing Page ---
 const LandingPage = ({ onLogin }) => {
-  
-  // 🟢 定義輪播圖片清單
   const galleryItems = [
     { img: "https://images.unsplash.com/photo-1551632811-561732d1e306", tag: "#隱藏酒吧", title: "深夜微醺" },
     { img: "https://images.unsplash.com/photo-1516483638261-f4dbaf036963", tag: "#秘境溫泉", title: "極致放鬆" },
@@ -129,6 +124,7 @@ const LandingPage = ({ onLogin }) => {
               <p className="font-bold">下午 3 點剛好順路去<br/>「中目黑」喝咖啡 ☕️</p>
             </div>
             <div className="absolute top-1/3 left-10 z-30 animate-cursor">
+              {/* 🟢 這裡原本因為缺少 MousePointer2 而崩潰 */}
               <MousePointer2 className="text-orange-500 fill-orange-500" size={32}/>
               <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded ml-4 font-bold">Alex</span>
             </div>
@@ -151,6 +147,7 @@ const LandingPage = ({ onLogin }) => {
                   </div>
                 </div>
                 <div className="bg-gray-50 p-2 rounded text-sm text-gray-500 flex gap-2">
+                  {/* 🟢 這裡原本因為缺少 MessageCircle 而崩潰 */}
                   <MessageCircle size={16}/>
                   Alex: 那邊遊客很多，要早點去！
                 </div>
@@ -181,6 +178,7 @@ const LandingPage = ({ onLogin }) => {
             <ul className="space-y-3">
               {['多人同時在線編輯', '自動同步至手機 App', '內建 Google 地圖評分參考'].map((item, i) => (
                 <li key={i} className="flex items-center gap-3 font-bold text-gray-700">
+                  {/* 🟢 這裡原本因為缺少 Check 而崩潰 */}
                   <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center"><Check size={14} strokeWidth={3}/></div>
                   {item}
                 </li>
@@ -309,7 +307,7 @@ const LandingPage = ({ onLogin }) => {
           ))}
         </div>
 
-        {/* 🟢 修正：Marquee 無縫循環 (複製兩份內容，移動 -50%) */}
+        {/* Marquee Animation */}
         <div className="relative w-full overflow-hidden py-10">
           <div className="flex gap-6 w-max animate-marquee hover:[animation-play-state:paused]">
             {[...galleryItems, ...galleryItems].map((item, i) => (
@@ -349,34 +347,15 @@ const LandingPage = ({ onLogin }) => {
 
       {/* CSS Animations */}
       <style>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-20px); }
-        }
-        @keyframes float-reverse {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(15px); }
-        }
-        @keyframes cursor-move {
-          0% { transform: translate(0, 0); }
-          25% { transform: translate(100px, 50px); }
-          50% { transform: translate(50px, 100px); }
-          75% { transform: translate(-50px, 20px); }
-          100% { transform: translate(0, 0); }
-        }
-        /* 🟢 修正：Marquee keyframes 移動 -50% */
-        @keyframes marquee {
-          0% { transform: translateX(0%); }
-          100% { transform: translateX(-50%); }
-        }
-        @keyframes pop-in {
-          0% { opacity: 0; transform: scale(0.8) rotate(2deg); }
-          100% { opacity: 1; transform: scale(1) rotate(2deg); }
-        }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+        @keyframes float-reverse { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(15px); } }
+        @keyframes cursor-move { 0% { transform: translate(0, 0); } 25% { transform: translate(100px, 50px); } 50% { transform: translate(50px, 100px); } 75% { transform: translate(-50px, 20px); } 100% { transform: translate(0, 0); } }
+        @keyframes marquee { 0% { transform: translateX(0%); } 100% { transform: translateX(-50%); } }
+        @keyframes pop-in { 0% { opacity: 0; transform: scale(0.8) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(2deg); } }
         .animate-float { animation: float 6s ease-in-out infinite; }
         .animate-float-reverse { animation: float-reverse 5s ease-in-out infinite; }
         .animate-cursor { animation: cursor-move 10s infinite alternate; }
-        .animate-marquee { animation: marquee 60s linear infinite; } /* 稍微調慢速度 */
+        .animate-marquee { animation: marquee 60s linear infinite; }
         .animate-pop-in { animation: pop-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
       `}</style>
     </div>
@@ -393,6 +372,9 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   const [editingId, setEditingId] = useState(null); 
   const [shareModalData, setShareModalData] = useState(null);
 
+  // Google Autocomplete 參考
+  const autocompleteRef = useRef(null);
+
   const [newTrip, setNewTrip] = useState({
     title: '',
     destination: '',
@@ -403,9 +385,17 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     flightIn: { airport: '', time: '' }
   });
 
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchWrapperRef = useRef(null);
+  // 日期範圍 State
+  const [dateRange, setDateRange] = useState([null, null]);
+  const [startDateObj, endDateObj] = dateRange;
+
+  // 🟢 監聽螢幕寬度，解決手機版月份跳動問題
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // 監聽行程列表
   useEffect(() => {
@@ -417,19 +407,12 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     const tripsRef = collection(db, 'artifacts', appId, 'trips');
     const unsubscribe = onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // 前端過濾：只顯示我是協作者的行程
-      const myTrips = tripList.filter(t =>
-        t.collaborators && t.collaborators.includes(user.uid)
-      );
-
-      // 排序：新的在前
+      const myTrips = tripList.filter(t => t.collaborators && t.collaborators.includes(user.uid));
       myTrips.sort((a, b) => {
         const timeA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
         const timeB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
         return timeB - timeA;
       });
-
       setTrips(myTrips);
       setLoading(false);
     }, (error) => {
@@ -439,51 +422,51 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     return () => unsubscribe();
   }, [user]);
 
-  // 關閉建議選單
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (searchWrapperRef.current && !searchWrapperRef.current.contains(event.target)) {
-        setShowSuggestions(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const handleLogin = async () => {
-    console.log("🚀 嘗試登入...", { auth, googleProvider });
-    if (!auth) {
-      alert("Firebase Auth 未初始化，請檢查 firebase.js");
-      return;
-    }
+    if (!auth) { alert("Firebase Auth 未初始化"); return; }
     try { 
       const result = await signInWithPopup(auth, googleProvider); 
-      console.log("✅ 登入成功！User:", result.user);
+      const user = result.user;
+      
+      // 🟢 關鍵新增：登入時，將用戶資料寫入 'users' 集合，讓其他人可以查到名字
+      // 使用 setDoc + merge: true，避免覆蓋掉未來可能新增的其他欄位
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        displayName: user.displayName || "Unknown User",
+        email: user.email || "",
+        photoURL: user.photoURL || "",
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
+
+      console.log("✅ 登入成功並更新使用者資料！User:", user);
     } catch (error) { 
       console.error("❌ Login failed 詳細錯誤:", error); 
       alert(`登入失敗 (${error.code}): ${error.message}`);
     }
   };
 
-  const handleDestinationChange = (e) => {
-    const value = e.target.value;
-    setNewTrip(prev => ({ ...prev, destination: value, preSelectedCenter: null }));
-    if (value.trim().length > 0) {
-      const lowerValue = value.toLowerCase();
-      const filtered = POPULAR_DESTINATIONS.filter(place =>
-        place.keywords.some(k => k.includes(lowerValue)) || place.label.includes(value) || place.name.toLowerCase().includes(lowerValue)
-      );
-      setSuggestions(filtered);
-      setShowSuggestions(true);
-    } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
+  // 處理 Google Autocomplete 選擇
+  const onPlaceChanged = () => {
+    if (autocompleteRef.current) {
+      const place = autocompleteRef.current.getPlace();
+      if (place.geometry && place.geometry.location) {
+        const name = place.name || place.formatted_address.split(',')[0];
+        setNewTrip(prev => ({
+          ...prev,
+          destination: name,
+          preSelectedCenter: { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() }
+        }));
+      }
     }
   };
 
-  const handleSelectSuggestion = (place) => {
-    setNewTrip(prev => ({ ...prev, destination: place.label, preSelectedCenter: { lat: place.lat, lng: place.lng } }));
-    setShowSuggestions(false);
+  // 處理日期選擇
+  const handleDateChange = (update) => {
+    const safeUpdate = update || [null, null];
+    setDateRange(safeUpdate);
+    const [start, end] = safeUpdate;
+    const formatDate = (d) => d ? d.toISOString().split('T')[0] : '';
+    setNewTrip(prev => ({ ...prev, startDate: formatDate(start), endDate: formatDate(end) }));
   };
 
   const handleEditClick = (trip) => {
@@ -496,6 +479,11 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
       flightOut: trip.flightOut || { airport: '', time: '' },
       flightIn: trip.flightIn || { airport: '', time: '' }
     });
+    if(trip.startDate && trip.endDate) {
+       setDateRange([new Date(trip.startDate), new Date(trip.endDate)]);
+    } else {
+       setDateRange([null, null]);
+    }
     setEditingId(trip.id);
     setShowCreateModal(true);
   };
@@ -503,30 +491,15 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   const handleDeleteTrip = async (trip) => {
     const isOwner = trip.ownerId === user.uid;
     if (isOwner) {
-      const hasOtherCollaborators = trip.collaborators && trip.collaborators.length > 1;
-      let confirmMsg = "確定要刪除此行程嗎？\n\n此動作將無法復原，所有資料將會消失。";
-      if (hasOtherCollaborators) {
-        confirmMsg = "⚠️ 警告：此行程目前有其他共編者！\n\n若您刪除此行程，所有成員（包含您）都將無法再存取此資料。\n\n您確定要強制刪除嗎？";
-      }
-      if (!window.confirm(confirmMsg)) return;
-      try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'trips', trip.id));
-      } catch (error) {
-        console.error("Delete failed:", error);
-        alert("刪除失敗，請檢查網路連線。");
-      }
+      if (!window.confirm("確定要刪除此行程嗎？\n\n此動作將無法復原。")) return;
+      try { await deleteDoc(doc(db, 'artifacts', appId, 'trips', trip.id)); } 
+      catch (error) { alert("刪除失敗，請檢查網路連線。"); }
     } else {
-      const confirmMsg = "確定要退出此行程的共編嗎？\n\n退出後，此行程將從您的列表中移除，但其他成員仍可繼續編輯。";
-      if (!window.confirm(confirmMsg)) return;
-      try {
+      if (!window.confirm("確定要退出此行程的共編嗎？")) return;
+      try { 
         const tripRef = doc(db, 'artifacts', appId, 'trips', trip.id);
-        await updateDoc(tripRef, {
-          collaborators: arrayRemove(user.uid)
-        });
-      } catch (error) {
-        console.error("Leave failed:", error);
-        alert("退出失敗，請檢查網路連線。");
-      }
+        await updateDoc(tripRef, { collaborators: arrayRemove(user.uid) });
+      } catch (error) { alert("退出失敗。"); }
     }
   };
 
@@ -537,50 +510,29 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
     }
     setIsCreating(true);
     let finalCenter = { lat: 35.6762, lng: 139.6503 };
+    
+    if (newTrip.preSelectedCenter) {
+      finalCenter = { lat: Number(newTrip.preSelectedCenter.lat), lng: Number(newTrip.preSelectedCenter.lng) };
+    }
+    
+    const nowISO = new Date().toISOString();
+    const tripData = {
+      title: newTrip.title || "未命名行程",
+      destination: newTrip.destination || "未知目的地",
+      startDate: newTrip.startDate || "",
+      endDate: newTrip.endDate || "",
+      center: finalCenter,
+      flightOut: newTrip.flightOut,
+      flightIn: newTrip.flightIn,
+      updatedAt: nowISO
+    };
+
     try {
-      if (newTrip.preSelectedCenter) {
-        finalCenter = {
-          lat: Number(newTrip.preSelectedCenter.lat),
-          lng: Number(newTrip.preSelectedCenter.lng)
-        };
-      } else if (isMapScriptLoaded && window.google && window.google.maps) {
-        try {
-          const geocodeTask = new Promise((resolve) => {
-            const geocoder = new window.google.maps.Geocoder();
-            geocoder.geocode({ address: newTrip.destination }, (results, status) => {
-              if (status === 'OK' && results[0] && results[0].geometry) {
-                const loc = results[0].geometry.location;
-                resolve({ lat: loc.lat(), lng: loc.lng() });
-              } else {
-                resolve(null);
-              }
-            });
-          });
-          const result = await Promise.race([geocodeTask, new Promise(r => setTimeout(() => r(null), 1000))]);
-          if (result) finalCenter = result;
-        } catch (e) { console.error("Geo error", e); }
-      }
-
-      const nowISO = new Date().toISOString();
-      const tripData = {
-        title: newTrip.title || "未命名行程",
-        destination: newTrip.destination || "未知目的地",
-        startDate: newTrip.startDate || "",
-        endDate: newTrip.endDate || "",
-        center: finalCenter,
-        flightOut: newTrip.flightOut,
-        flightIn: newTrip.flightIn,
-        updatedAt: nowISO
-      };
-
       if (editingId) {
-        console.log("正在更新行程...", editingId);
         const tripRef = doc(db, 'artifacts', appId, 'trips', editingId);
         await updateDoc(tripRef, tripData);
-        console.log("更新成功！");
         setShowCreateModal(false);
       } else {
-        console.log("正在建立新行程...");
         const fullData = {
           ...tripData,
           ownerId: user.uid,
@@ -589,19 +541,13 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
         };
         const tripsRef = collection(db, 'artifacts', appId, 'trips');
         const newDocRef = doc(tripsRef);
-        const cleanData = JSON.parse(JSON.stringify(fullData));
-        await setDoc(newDocRef, cleanData);
-        console.log("建立成功！");
+        await setDoc(newDocRef, JSON.parse(JSON.stringify(fullData)));
         setShowCreateModal(false);
         navigate(`/trip/${newDocRef.id}`);
       }
-
-      setNewTrip({
-        title: '', destination: '', startDate: '', endDate: '', preSelectedCenter: null,
-        flightOut: { airport: '', time: '' }, flightIn: { airport: '', time: '' }
-      });
+      setNewTrip({ title: '', destination: '', startDate: '', endDate: '', preSelectedCenter: null, flightOut: { airport: '', time: '' }, flightIn: { airport: '', time: '' } });
+      setDateRange([null, null]);
       setEditingId(null);
-
     } catch (error) {
       console.error("Save Error:", error);
       alert(`儲存失敗: ${error.message}`);
@@ -611,18 +557,64 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
   };
 
   return (
-    // 🟢 關鍵修正：h-[100dvh] w-full ... overflow-y-auto overflow-x-hidden
-    // 讓 Dashboard 擁有自己的滾動容器，無視 global 的 overflow: hidden
     <div className="h-[100dvh] w-full bg-gray-50 font-sans text-gray-800 overflow-y-auto overflow-x-hidden custom-scrollbar">
+      {/* 🟢 CSS 優化：修復日期選擇器排版與 Icon 重疊問題 */}
+      <style>{`
+        .react-datepicker-wrapper { width: 100%; }
+        .react-datepicker__input-container input {
+           width: 100%; height: 46px; border-radius: 0.75rem; border: 1px solid #d1d5db;
+           padding: 0.625rem 1rem; outline: none; font-size: 0.875rem;
+        }
+        .react-datepicker__input-container input:focus { border-color: #14b8a6; ring: 2px solid #14b8a6; }
+        .react-datepicker-popper { z-index: 60 !important; }
+        
+        /* 1. 修復右側空白：讓容器 inline-flex 自適應 */
+        .react-datepicker {
+           font-family: 'Inter', sans-serif; border: none; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+           border-radius: 1rem; overflow: hidden;
+           display: inline-flex !important;
+        }
+        
+        .react-datepicker__header { background-color: white; border-bottom: 1px solid #f3f4f6; padding-top: 1rem; }
+        .react-datepicker__current-month { font-weight: 800; color: #111827; margin-bottom: 0.5rem; }
+        .react-datepicker__day-name { color: #9ca3af; font-weight: 600; width: 2.5rem; }
+        .react-datepicker__day { width: 2.5rem; line-height: 2.5rem; margin: 0.1rem; border-radius: 0.5rem; font-weight: 500; }
+        .react-datepicker__day--selected, .react-datepicker__day--in-range { background-color: #0d9488 !important; color: white !important; }
+        .react-datepicker__day--in-selecting-range:not(.react-datepicker__day--in-range) { background-color: #ccfbf1 !important; color: #0f766e !important; }
+        .react-datepicker__day--keyboard-selected { background-color: #f0fdfa; color: #0d9488; }
+        .react-datepicker__navigation { top: 1rem; }
+        
+        /* 2. 修復 Icon 重疊：強制將清除按鈕往左移 */
+        .react-datepicker__close-icon {
+           right: 40px !important; /* 移到 Calendar icon 左側 */
+           top: 0 !important;
+           height: 100% !important;
+           display: flex !important;
+           align-items: center !important;
+           padding: 0 !important;
+           z-index: 10;
+        }
+        .react-datepicker__close-icon::after {
+           background-color: transparent !important;
+           color: #9ca3af !important;
+           font-size: 1.25rem !important;
+           content: "×" !important;
+        }
+
+        .pac-container { z-index: 9999 !important; border-radius: 0.75rem; margin-top: 4px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; font-family: 'Inter', sans-serif; }
+        .pac-item { padding: 10px 12px; cursor: pointer; }
+        .pac-item:hover { background-color: #f0fdfa; }
+        .pac-item-query { font-size: 14px; color: #111827; }
+        .pac-icon { display: none; } 
+      `}</style>
+
       {!user ? (
         <LandingPage onLogin={handleLogin} />
       ) : (
         <>
           <header className="bg-white border-b border-gray-200 sticky top-0 z-10 px-6 py-3 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-2">
-              <div className="bg-teal-600 p-1.5 rounded-lg">
-                <MapIcon className="text-white" size={20} />
-              </div>
+              <div className="bg-teal-600 p-1.5 rounded-lg"><MapIcon className="text-white" size={20} /></div>
               <span className="font-bold text-xl text-teal-800 tracking-tight">TripCanvas</span>
             </div>
             <div className="flex items-center gap-4">
@@ -638,47 +630,24 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
             <div>
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-2xl font-bold text-gray-800 border-l-4 border-teal-500 pl-3">我的行程</h2>
-                <button onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow hover:shadow-md"><Plus size={18} /> 建立新行程</button>
+                <button onClick={() => { setEditingId(null); setShowCreateModal(true); setDateRange([null, null]); setNewTrip({ title: '', destination: '', startDate: '', endDate: '', preSelectedCenter: null, flightOut: { airport: '', time: '' }, flightIn: { airport: '', time: '' } }); }} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow hover:shadow-md"><Plus size={18} /> 建立新行程</button>
               </div>
 
               {loading ? (
                 <div className="flex justify-center py-20"><Loader2 className="animate-spin text-teal-600" size={32} /></div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <div onClick={() => { setEditingId(null); setShowCreateModal(true); }} className="border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center p-8 cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all group min-h-[220px]">
+                  <div onClick={() => { setEditingId(null); setShowCreateModal(true); setDateRange([null, null]); setNewTrip({ title: '', destination: '', startDate: '', endDate: '', preSelectedCenter: null, flightOut: { airport: '', time: '' }, flightIn: { airport: '', time: '' } }); }} className="border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center p-8 cursor-pointer hover:border-teal-500 hover:bg-teal-50 transition-all group min-h-[220px]">
                     <div className="w-14 h-14 rounded-full bg-gray-100 group-hover:bg-teal-200 flex items-center justify-center mb-4 transition-colors"><Plus className="text-gray-400 group-hover:text-teal-700" size={28} /></div>
                     <span className="font-bold text-gray-500 group-hover:text-teal-700 text-lg">新增行程</span>
                   </div>
                   {trips.map(trip => (
-                    <div key={trip.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden group flex flex-col relative"
-                         onClick={() => navigate(`/trip/${trip.id}`)}>
-                      
+                    <div key={trip.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden group flex flex-col relative" onClick={() => navigate(`/trip/${trip.id}`)}>
                       <div className="absolute top-3 right-3 z-20 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDeleteTrip(trip); }}
-                          className="bg-white/90 p-2 rounded-full shadow hover:text-red-600 text-gray-500 hover:scale-110 transition-all"
-                          title={trip.ownerId === user.uid ? "刪除行程" : "退出共編"}
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setShareModalData(trip); }}
-                          className="bg-white/90 p-2 rounded-full shadow hover:text-teal-600 text-gray-500 hover:scale-110 transition-all"
-                          title="成員與邀請"
-                        >
-                          <Users size={18} />
-                        </button>
-                        {trip.ownerId === user.uid && (
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleEditClick(trip); }}
-                            className="bg-white/90 p-2 rounded-full shadow hover:text-blue-600 text-gray-500 hover:scale-110 transition-all"
-                            title="編輯行程資訊"
-                          >
-                            <Edit3 size={18} />
-                          </button>
-                        )}
+                        <button onClick={(e) => { e.stopPropagation(); handleDeleteTrip(trip); }} className="bg-white/90 p-2 rounded-full shadow hover:text-red-600 text-gray-500 hover:scale-110 transition-all" title="刪除行程"><Trash2 size={18} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); setShareModalData(trip); }} className="bg-white/90 p-2 rounded-full shadow hover:text-teal-600 text-gray-500 hover:scale-110 transition-all" title="成員與邀請"><Users size={18} /></button>
+                        {trip.ownerId === user.uid && (<button onClick={(e) => { e.stopPropagation(); handleEditClick(trip); }} className="bg-white/90 p-2 rounded-full shadow hover:text-blue-600 text-gray-500 hover:scale-110 transition-all" title="編輯行程資訊"><Edit3 size={18} /></button>)}
                       </div>
-
                       <div className="h-32 bg-gradient-to-r from-teal-500 to-cyan-600 relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/20 rounded-full blur-xl"></div>
                         <div className="absolute -left-4 -bottom-4 w-20 h-20 bg-black/10 rounded-full blur-lg"></div>
@@ -696,7 +665,7 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
             </div>
           </main>
 
-          {/* Modals */}
+          {/* Modal */}
           {showCreateModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
@@ -710,30 +679,39 @@ export default function Dashboard({ user, isMapScriptLoaded }) {
                 <div className="p-6 space-y-5">
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1.5">行程名稱</label>
-                    <input type="text" placeholder="例如：東京五天四夜爆食之旅" className="w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none" value={newTrip.title} onChange={e => setNewTrip({ ...newTrip, title: e.target.value })} />
+                    <input type="text" placeholder="例如：東京五天四夜爆食之旅" className="w-full px-4 py-2.5 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-teal-500" value={newTrip.title} onChange={e => setNewTrip({ ...newTrip, title: e.target.value })} />
                   </div>
-                  <div className="relative" ref={searchWrapperRef}>
-                    <label className="block text-sm font-bold text-gray-700 mb-1.5">目的地</label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3.5 top-3 text-gray-400" size={18} />
-                      <input type="text" placeholder="例如：Tokyo" className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none" value={newTrip.destination} onChange={handleDestinationChange} onFocus={() => { if (newTrip.destination && suggestions.length > 0) setShowSuggestions(true); }} autoComplete="off" />
-                    </div>
-                    {showSuggestions && suggestions.length > 0 && (
-                      <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
-                        {suggestions.map((place, index) => (
-                          <li key={index} onClick={() => handleSelectSuggestion(place)} className="px-4 py-3 hover:bg-teal-50 cursor-pointer transition-colors border-b border-gray-100 last:border-none flex items-center gap-3">
-                            <div className="bg-teal-100 p-1.5 rounded-full shrink-0"><Globe size={16} className="text-teal-600" /></div>
-                            <div><div className="font-bold text-gray-800 text-sm">{place.label}</div><div className="text-xs text-gray-500">{place.name}</div></div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  
+                  {/* Google Autocomplete */}
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1.5">旅遊日期</label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <input type="date" className="w-full h-[46px] border border-gray-300 rounded-xl px-4 py-2.5 bg-white outline-none focus:border-teal-500 text-sm" value={newTrip.startDate} onChange={e => setNewTrip({ ...newTrip, startDate: e.target.value })} max={newTrip.endDate} />
-                      <input type="date" className="w-full h-[46px] border border-gray-300 rounded-xl px-4 py-2.5 bg-white outline-none focus:border-teal-500 text-sm" value={newTrip.endDate} onChange={e => setNewTrip({ ...newTrip, endDate: e.target.value })} min={newTrip.startDate} />
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">目的地 (輸入後自動搜尋)</label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3.5 top-3 text-gray-400 z-10" size={18} />
+                      {isMapScriptLoaded && (
+                        <Autocomplete onLoad={ref => autocompleteRef.current = ref} onPlaceChanged={onPlaceChanged}>
+                          <input type="text" placeholder="輸入城市或機場 (如: Osaka)" className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-teal-500" value={newTrip.destination} onChange={e => setNewTrip({ ...newTrip, destination: e.target.value })} />
+                        </Autocomplete>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 🟢 雙月份日期選擇器 */}
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">旅遊日期 (點選起訖日)</label>
+                    <div className="relative">
+                       <DatePicker
+                          selectsRange={true}
+                          startDate={startDateObj}
+                          endDate={endDateObj}
+                          onChange={handleDateChange}
+                          isClearable={true}
+                          placeholderText="請選擇去程與回程日期"
+                          dateFormat="yyyy/MM/dd"
+                          monthsShown={isMobile ? 1 : 2}
+                          className="w-full"
+                          // locale="zh-TW" // 移除此行，暫時使用英文介面
+                       />
+                       <Calendar className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={18} />
                     </div>
                   </div>
 
