@@ -11,7 +11,7 @@ export const runGemini = async (prompt) => {
     // 【關鍵修正】根據你的白名單，改用 gemini-2.0-flash
     // 這個模型在你的清單中明確存在
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash", 
+      model: "gemini-2.5-flash", 
     });
     
     // 發送請求
