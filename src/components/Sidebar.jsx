@@ -65,14 +65,30 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
       onClick={handleCardClick}
       style={{ touchAction: isMobile ? 'auto' : 'none' }}
     >
-      <img src={imageSrc} onError={() => setImageSrc(PLACEHOLDER_IMAGE_URL)} className="w-16 h-16 rounded object-cover bg-gray-100 border border-gray-200" alt={item.name} />
-      <div className="flex-1 min-w-0">
-        <h4 className="font-bold text-sm text-gray-800 truncate flex items-center gap-1"><IconByType type={item.type} size={14} /> {item.name}</h4>
-        <span className="text-xs text-orange-500 font-bold">★{item.rating || 4.0}</span>
-        <div className="mt-1 flex items-center gap-3">{renderPrice(item.priceLevel)}{renderOpenStatus(item.isOpen)}</div>
-        {!isFavoriteView && item.aiReason && (
-          <p className="text-[10px] text-gray-500 mt-1 line-clamp-1 bg-gray-50 px-1 rounded">{item.aiReason}</p>
+      <img src={imageSrc} onError={() => setImageSrc(PLACEHOLDER_IMAGE_URL)} className="w-16 h-16 rounded object-cover bg-gray-100 border border-gray-200 shrink-0" alt={item.name} />
+      <div className="flex-1 min-w-0 flex flex-col justify-between">
+        <div>
+          <h4 className="font-bold text-sm text-gray-800 truncate flex items-center gap-1"><IconByType type={item.type} size={14} /> {item.name}</h4>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-orange-500 font-bold flex items-center">★{item.rating || 4.0}</span>
+            {renderPrice(item.priceLevel)}
+            {renderOpenStatus(item.isOpen)}
+          </div>
+        </div>
+
+        {/* 🟢 AI 智慧摘要顯示區 */}
+        {item.aiSummary ? (
+          <div className="mt-1.5 bg-purple-50 border border-purple-100 rounded px-2 py-1 text-[10px] text-purple-700 leading-tight flex items-start gap-1 animate-in fade-in">
+            <Sparkles size={10} className="shrink-0 mt-0.5 fill-purple-200" />
+            <span>{item.aiSummary}</span>
+          </div>
+        ) : (
+          /* 如果沒有 AI 摘要，顯示原本的 Reason (如果是 AI 推薦列表的話) */
+          !isFavoriteView && item.aiReason && (
+            <p className="text-[10px] text-gray-500 mt-1 line-clamp-1 bg-gray-50 px-1 rounded">{item.aiReason}</p>
+          )
         )}
+
         <div className="mt-2 flex items-center gap-2">
           <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => {
             e.stopPropagation();
@@ -88,7 +104,8 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                handleAddToItinerary({ ...item, lat: item.pos?.lat, lng: item.pos?.lng });
+                // 🟢 加入行程時，記得把 aiSummary 也帶入
+                handleAddToItinerary({ ...item, lat: item.pos?.lat, lng: item.pos?.lng, aiSummary: item.aiSummary });
                 if (navigator.vibrate) navigator.vibrate(50);
               }}
               className={`text-xs flex items-center gap-1 font-medium px-2 py-1 rounded w-fit border transition-colors ${isMobile ?
@@ -117,6 +134,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
   const [activeFilter, setActiveFilter] = useState('all');
   const placesServiceRef = useRef(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isAnalyzing, setIsAnalyzing] = useState(false); // 🟢 AI 分析狀態
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -124,6 +142,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 🟢 只要有輸入文字，就視為搜尋模式 (優先顯示搜尋結果)
   const isSearchMode = searchInput.trim().length > 0;
   const displayList = isSearchMode ? textSearchResults : aiRecommendations;
 
@@ -273,6 +292,51 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     }
   }, [mapCenter, fetchCityName, runPlacesServiceRequest, isMapScriptLoaded, currentCityName, aiRecommendations]);
 
+  // 🟢 批次生成摘要函式
+  const generateBatchSummaries = async (places) => {
+    const targets = places.slice(0, 6); // 只取前 6 筆，節省 Token
+    if (targets.length === 0) return;
+
+    setIsAnalyzing(true);
+
+    const placesListStr = targets.map(p => `ID: ${p.place_id}, Name: ${p.name}`).join('\n');
+
+    const prompt = `
+      請擔任旅遊美食專家。針對以下地點清單，分析其「必吃/必玩亮點」與「預估人均消費」。
+      
+      【地點清單】
+      ${placesListStr}
+
+      【輸出規則】
+      1. 請回傳純 JSON Array。
+      2. 格式：[{"id": "對應的ID", "summary": "亮點 (12字內) | 預估價格"}]
+      3. 範例：[{"id": "ChIJ...", "summary": "必點辣椒螃蟹 | $1500"}]
+      4. 價格請用當地貨幣或美金估算，若為景點請標註「免費」或「門票約$XX」。
+      5. summary 字數請務必精簡，不要超過 20 字。
+    `;
+
+    try {
+      const jsonStr = await runGemini(prompt);
+      // 清理 JSON 字串 (避免 AI 回傳 Markdown code block)
+      const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+      const summaryData = JSON.parse(cleanJson);
+
+      // 將 AI 回傳的結果合併回 textSearchResults
+      setTextSearchResults(prev => prev.map(item => {
+        const aiInfo = summaryData.find(s => s.id === item.place_id);
+        if (aiInfo) {
+          return { ...item, aiSummary: aiInfo.summary };
+        }
+        return item;
+      }));
+
+    } catch (error) {
+      console.error("Batch Summary Error:", error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleSearch = useCallback(async (query) => {
     if (!isMapScriptLoaded) {
       setSearchError("SERVICE_UNAVAILABLE");
@@ -281,6 +345,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     setIsLoading(true);
     setSearchError(null);
     setTextSearchResults([]);
+    setIsAnalyzing(false); // 重置分析狀態
 
     try {
       let currentBounds;
@@ -322,10 +387,15 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             pos: { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() },
             priceLevel: place.price_level,
             isOpen: isOpenStatus,
-            url: googleUrl
+            url: googleUrl,
+            aiSummary: null // 初始化 null
           };
         });
         setTextSearchResults(formattedResults);
+
+        // 🟢 搜尋結果出來後，立即觸發 AI 批次分析
+        generateBatchSummaries(formattedResults);
+
       } else {
         setTextSearchResults([]);
       }
@@ -387,7 +457,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             <ChevronLeft size={24} />
           </button>
 
-          {/* 🟢 Mobile Header Search: 手機版顯示搜尋框，桌面版顯示 Logo */}
+          {/* 🟢 Mobile Header Search */}
           <div className="flex-1 md:hidden">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
@@ -398,6 +468,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-9 pr-10 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
               />
+              {/* 右側控制區 (Loader 與 清除按鈕) */}
               <div className="absolute right-3 top-2.5 flex items-center gap-2">
                 {isLoading && isSearchMode && <Loader2 size={16} className="animate-spin text-teal-600" />}
                 {searchInput.length > 0 && (
@@ -412,7 +483,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             </div>
           </div>
 
-          {/* 🟢 Desktop Logo: 手機版隱藏，桌面版顯示 */}
+          {/* Desktop Logo */}
           <div className="hidden md:flex items-center gap-2">
             <Map className="text-teal-700" size={24} />
             <span className="font-bold text-teal-700 text-lg">TripCanvas</span>
@@ -421,7 +492,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       </div>
 
       <div className="p-4 border-b border-gray-100">
-        {/* 🟢 Desktop Search: 手機版隱藏，桌面版顯示 */}
+        {/* 🟢 Desktop Search */}
         <div className="relative mb-3 hidden md:block">
           <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
           <input
@@ -431,6 +502,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             onChange={(e) => setSearchInput(e.target.value)}
             className="w-full pl-9 pr-10 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
           />
+          {/* 右側控制區 (Loader 與 清除按鈕) */}
           <div className="absolute right-3 top-2.5 flex items-center gap-2">
             {isLoading && isSearchMode && <Loader2 size={16} className="animate-spin text-teal-600" />}
             {searchInput.length > 0 && (
@@ -489,7 +561,14 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
         {isSearchMode ? (
           <>
             {searchError === 'API_DENIED' && <div className="bg-red-50 p-3 rounded-lg text-xs text-red-700 mb-4 border border-red-200 flex items-start gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5" /><div><b> API 權限受限 </b><br /> 請檢查 API Key 設定。 </div></div>}
-            
+
+            {/* 🟢 AI 分析中的提示 */}
+            {isAnalyzing && !isLoading && (
+              <div className="text-[10px] text-purple-600 flex items-center gap-1 justify-center animate-pulse mb-2">
+                <Sparkles size={12} /> AI 正在分析必吃必玩熱點與價格...
+              </div>
+            )}
+
             {displayList.map(item => (
               <DraggableSidebarItem
                 key={item.id}
@@ -502,7 +581,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                 isMobile={isMobile}
               />
             ))}
-            
+
             {!isLoading && displayList.length === 0 && (
               <div className="text-center py-10 text-gray-400">
                 <p>找不到結果</p>
