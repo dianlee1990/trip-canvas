@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Map, Search, Sparkles, Heart, Plus, Loader2, DollarSign, Clock, Navigation, AlertTriangle,
   ChevronLeft, Camera, ShoppingBag, Bed, Activity, Utensils,
-  Beer, Landmark, Train, Mountain
+  Beer, Landmark, Train, Mountain, X
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { IconByType } from '../icons/IconByType';
@@ -45,12 +45,12 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
   };
 
   const renderPrice = (level) => level !== undefined && level !== null && (
-    <span className="flex items-center gap-1 text-xs text-gray-500"><DollarSign size={12}/> {priceMap[level] || 'N/A'}</span>
+    <span className="flex items-center gap-1 text-xs text-gray-500"><DollarSign size={12} /> {priceMap[level] || 'N/A'}</span>
   );
 
   const renderOpenStatus = (isOpen) => isOpen !== undefined && isOpen !== null && (
     <span className={`flex items-center gap-1 text-xs font-medium ${isOpen ? 'text-green-600' : 'text-red-600'}`}>
-      <Clock size={12}/> {isOpen ? '營業中' : '休息中'}
+      <Clock size={12} /> {isOpen ? '營業中' : '休息中'}
     </span>
   );
 
@@ -65,21 +65,23 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
       onClick={handleCardClick}
       style={{ touchAction: isMobile ? 'auto' : 'none' }}
     >
-      <img src={imageSrc} onError={() => setImageSrc(PLACEHOLDER_IMAGE_URL)} className="w-16 h-16 rounded object-cover bg-gray-100 border border-gray-200" alt={item.name}/>
+      <img src={imageSrc} onError={() => setImageSrc(PLACEHOLDER_IMAGE_URL)} className="w-16 h-16 rounded object-cover bg-gray-100 border border-gray-200" alt={item.name} />
       <div className="flex-1 min-w-0">
-        <h4 className="font-bold text-sm text-gray-800 truncate flex items-center gap-1"><IconByType type={item.type} size={14}/> {item.name}</h4>
+        <h4 className="font-bold text-sm text-gray-800 truncate flex items-center gap-1"><IconByType type={item.type} size={14} /> {item.name}</h4>
         <span className="text-xs text-orange-500 font-bold">★{item.rating || 4.0}</span>
         <div className="mt-1 flex items-center gap-3">{renderPrice(item.priceLevel)}{renderOpenStatus(item.isOpen)}</div>
         {!isFavoriteView && item.aiReason && (
           <p className="text-[10px] text-gray-500 mt-1 line-clamp-1 bg-gray-50 px-1 rounded">{item.aiReason}</p>
         )}
         <div className="mt-2 flex items-center gap-2">
-          <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation();
-            toggleFavorite(item); }} className={`text-xs flex items-center gap-1 font-medium px-2 py-1 rounded w-fit transition-colors ${isFav ?
+          <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => {
+            e.stopPropagation();
+            toggleFavorite(item);
+          }} className={`text-xs flex items-center gap-1 font-medium px-2 py-1 rounded w-fit transition-colors ${isFav ?
             'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-500'}`} title={isFav ?
-            "取消收藏" : "加入收藏"}>
-            <Heart size={12} fill={isFav ? "white" : "none"}/> {isFav ?
-            '已收藏' : '收藏'}
+              "取消收藏" : "加入收藏"}>
+            <Heart size={12} fill={isFav ? "white" : "none"} /> {isFav ?
+              '已收藏' : '收藏'}
           </button>
           {!isFavoriteView && (
             <button
@@ -93,7 +95,7 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
                 'bg-teal-50 text-teal-700 border-teal-200' : 'text-teal-600 border-transparent hover:bg-teal-50 hover:border-teal-100'}`}
               title="直接加入行程"
             >
-              <Plus size={12}/> 加入
+              <Plus size={12} /> 加入
             </button>
           )}
         </div>
@@ -228,7 +230,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             let type = item.type;
             let isOpenStatus = undefined;
             if (place.opening_hours && typeof place.opening_hours.isOpen === 'function') {
-              try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) {}
+              try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) { }
             }
             const googleUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
 
@@ -240,7 +242,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
               user_ratings_total: place.user_ratings_total || 0,
               type: type,
               tags: place.types ? place.types.slice(0, 3) : [],
-              image: place.photos?.[0]?.getUrl({maxWidth: 200, maxHeight: 200}) || PLACEHOLDER_IMAGE_URL,
+              image: place.photos?.[0]?.getUrl({ maxWidth: 200, maxHeight: 200 }) || PLACEHOLDER_IMAGE_URL,
               pos: { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() },
               priceLevel: place.price_level,
               isOpen: isOpenStatus,
@@ -304,7 +306,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
 
           let isOpenStatus = undefined;
           if (place.opening_hours && typeof place.opening_hours.isOpen === 'function') {
-            try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) {}
+            try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) { }
           }
           const googleUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
 
@@ -316,7 +318,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             user_ratings_total: place.user_ratings_total || 0,
             type: type,
             tags: place.types ? place.types.slice(0, 3) : ['景點'],
-            image: place.photos?.[0]?.getUrl({maxWidth: 200, maxHeight: 200}) || PLACEHOLDER_IMAGE_URL,
+            image: place.photos?.[0]?.getUrl({ maxWidth: 200, maxHeight: 200 }) || PLACEHOLDER_IMAGE_URL,
             pos: { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() },
             priceLevel: place.price_level,
             isOpen: isOpenStatus,
@@ -380,35 +382,41 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
 
       {/* Header */}
       <div className="h-16 min-h-16 max-h-16 border-b border-gray-200 flex items-center justify-between px-4 bg-white shrink-0 relative z-20">
-        <div className="flex items-center flex-1">
+        <div className="flex items-center flex-1 w-full">
           <button onClick={onBack} className="mr-3 p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-teal-700 transition-colors cursor-pointer shrink-0" title="回到儀表板">
             <ChevronLeft size={24} />
           </button>
-          
+
           {/* 🟢 Mobile Header Search: 手機版顯示搜尋框，桌面版顯示 Logo */}
           <div className="flex-1 md:hidden">
-             <div className="relative">
-                <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="搜尋地點..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
-                />
-                {isLoading && isSearchMode && <Loader2 size={16} className="absolute right-3 top-2.5 animate-spin text-teal-600"/>}
-             </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+              <input
+                type="text"
+                placeholder="搜尋地點..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="w-full pl-9 pr-10 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
+              />
+              <div className="absolute right-3 top-2.5 flex items-center gap-2">
+                {isLoading && isSearchMode && <Loader2 size={16} className="animate-spin text-teal-600" />}
+                {searchInput.length > 0 && (
+                  <button
+                    onClick={() => setSearchInput('')}
+                    className="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* 🟢 Desktop Logo: 手機版隱藏，桌面版顯示 */}
           <div className="hidden md:flex items-center gap-2">
-            <Map className="text-teal-700" size={24}/>
+            <Map className="text-teal-700" size={24} />
             <span className="font-bold text-teal-700 text-lg">TripCanvas</span>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 ml-auto">
-          {/* Empty right side */}
         </div>
       </div>
 
@@ -421,9 +429,19 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             placeholder="搜尋地點..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
+            className="w-full pl-9 pr-10 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
           />
-          {isLoading && isSearchMode && <Loader2 size={16} className="absolute right-3 top-2.5 animate-spin text-teal-600"/>}
+          <div className="absolute right-3 top-2.5 flex items-center gap-2">
+            {isLoading && isSearchMode && <Loader2 size={16} className="animate-spin text-teal-600" />}
+            {searchInput.length > 0 && (
+              <button
+                onClick={() => setSearchInput('')}
+                className="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -432,14 +450,14 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             className={`flex-1 py-1.5 text-xs font-medium rounded transition-all flex items-center justify-center gap-1 ${sidebarTab === 'search' ?
               'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            <Sparkles size={12}/> 探索
+            <Sparkles size={12} /> 探索
           </button>
           <button
             onClick={() => setSidebarTab('favorites')}
             className={`flex-1 py-1.5 text-xs font-medium rounded transition-all flex items-center justify-center gap-1 ${sidebarTab === 'favorites' ?
               'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            <Heart size={12} fill={myFavorites.length > 0 ? "#f97316" : "none"}/>
+            <Heart size={12} fill={myFavorites.length > 0 ? "#f97316" : "none"} />
             收藏 ({myFavorites.length})
           </button>
         </div>
@@ -465,22 +483,47 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide pb-24 md:pb-24">
-        {sidebarTab === 'search' && (
-          <>
-            {!isMapScriptLoaded && <div className="bg-red-50 p-2 text-xs text-red-600 mb-2 rounded border border-red-100">⚠️ 地圖載入中...</div>}
-            {searchError === 'API_DENIED' && <div className="bg-red-50 p-3 rounded-lg text-xs text-red-700 mb-4 border border-red-200 flex items-start gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5"/><div><b> API 權限受限 </b><br/> 請檢查 API Key 設定。 </div></div>}
-            {searchError === 'AI_ERROR' && <div className="bg-red-50 p-2 text-xs text-red-700 mb-2 rounded"> AI 連線失敗，請稍後再試。 </div>}
+        {!isMapScriptLoaded && <div className="bg-red-50 p-2 text-xs text-red-600 mb-2 rounded border border-red-100">⚠️ 地圖載入中...</div>}
 
-            {!isSearchMode && (
+        {/* 🟢 搜尋模式邏輯優先：只要有輸入文字，就顯示搜尋結果 */}
+        {isSearchMode ? (
+          <>
+            {searchError === 'API_DENIED' && <div className="bg-red-50 p-3 rounded-lg text-xs text-red-700 mb-4 border border-red-200 flex items-start gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5" /><div><b> API 權限受限 </b><br /> 請檢查 API Key 設定。 </div></div>}
+            
+            {displayList.map(item => (
+              <DraggableSidebarItem
+                key={item.id}
+                item={item}
+                isFavoriteView={false}
+                isFav={myFavorites.some(f => f.id === item.id)}
+                toggleFavorite={toggleFavorite}
+                handleAddToItinerary={handleAddToItinerary}
+                onPlaceSelect={onPlaceSelect}
+                isMobile={isMobile}
+              />
+            ))}
+            
+            {!isLoading && displayList.length === 0 && (
+              <div className="text-center py-10 text-gray-400">
+                <p>找不到結果</p>
+              </div>
+            )}
+          </>
+        ) : (
+          /* 一般模式：根據 Tab 顯示內容 */
+          <>
+            {sidebarTab === 'search' && (
               <>
+                {searchError === 'AI_ERROR' && <div className="bg-red-50 p-2 text-xs text-red-700 mb-2 rounded"> AI 連線失敗，請稍後再試。 </div>}
+
                 <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-3 rounded-lg text-xs text-indigo-900 mb-2 border border-indigo-100 flex items-center gap-2">
-                  <Sparkles size={14} className="text-purple-600 shrink-0"/>
-                  <div> AI 正在推薦 <b>{currentCityName || "此區域"}</b> 的 {CATEGORY_FILTERS.find(f => f.id===activeFilter)?.label}</div>
+                  <Sparkles size={14} className="text-purple-600 shrink-0" />
+                  <div> AI 正在推薦 <b>{currentCityName || "此區域"}</b> 的 {CATEGORY_FILTERS.find(f => f.id === activeFilter)?.label}</div>
                 </div>
 
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                    <Loader2 size={24} className="animate-spin text-purple-500"/>
+                    <Loader2 size={24} className="animate-spin text-purple-500" />
                     <p className="text-xs text-gray-400"> AI 正在挖掘最夯景點... </p>
                   </div>
                 ) : (
@@ -492,24 +535,21 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                     )}
 
                     <div ref={observerTarget} className="h-10 flex items-center justify-center w-full">
-                      {isLoadingMore && <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 size={14} className="animate-spin"/> 載入更多中... </div>}
+                      {isLoadingMore && <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 size={14} className="animate-spin" /> 載入更多中... </div>}
                     </div>
                   </>
                 )}
               </>
             )}
 
-            {isSearchMode && (
+            {sidebarTab === 'favorites' && (
               <>
-                {displayList.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={false} isFav={myFavorites.some(f => f.id === item.id)} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} />)}
-                {!isLoading && displayList.length === 0 && <div className="text-center py-10 text-gray-400"><p> 找不到結果 </p></div>}
+                {myFavorites.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={true} isFav={true} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} />)}
+                {myFavorites.length === 0 && <div className="text-center py-10 text-gray-400 text-xs"><p> 還沒有收藏任何地點 </p></div>}
               </>
             )}
           </>
         )}
-
-        {sidebarTab === 'favorites' && myFavorites.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={true} isFav={true} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} />)}
-        {sidebarTab === 'favorites' && myFavorites.length === 0 && <div className="text-center py-10 text-gray-400 text-xs"><p> 還沒有收藏任何地點 </p></div>}
       </div>
 
       <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-30 w-full px-6 pointer-events-none">
@@ -517,7 +557,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
           onClick={onOpenAI}
           className="pointer-events-auto w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-2 font-bold text-sm border border-white/20"
         >
-          <Sparkles size={18} className="animate-pulse"/>
+          <Sparkles size={18} className="animate-pulse" />
           <span> AI 智慧排程 </span>
         </button>
       </div>

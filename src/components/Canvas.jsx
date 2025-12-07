@@ -8,32 +8,62 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { IconByType } from '../icons/IconByType';
+import { logEvent } from '../utils/logger';
+import { auth } from '../utils/firebase';
 
-const getAffiliateLink = (item) => {
-  const nameEncoded = encodeURIComponent(item.name);
+// --- Affiliate Configuration ---
+const AGODA_CID = "1427616";
+const AGODA_TAG = "57450_2f19af64ff8c6";
+const KLOOK_AID = "api%7C701%7C57144de842062be037049d9828200a9f%7Cpid%7C101701";
+
+// Helper: 日期格式化 (保留備用)
+const formatDate = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().split('T')[0];
+};
+
+const getAffiliateLink = (item, tripStartDate) => {
+  // 1. 防呆機制：統一對名稱進行 URL 編碼，防止 &、空格或中文造成連結失效
+  const safeName = encodeURIComponent(item.name);
+  
   if (item.type === 'hotel') {
+    // 2. Agoda 修正邏輯：改用官方 Partner Search Endpoint
+    // cid: 合作夥伴 ID
+    // tag: 追蹤標籤
+    // pcs: 1 (Partner Channel Search) - 關鍵參數，避免被導回首頁
+    // city: 傳入飯店名稱進行模糊比對 (Agoda 允許在 city 欄位傳入關鍵字)
+    let url = `https://www.agoda.com/partners/partnersearch.aspx?cid=${AGODA_CID}&tag=${AGODA_TAG}&pcs=1&city=${safeName}`;
+    
+    // 備註：Partner Search 對於 checkin 參數較為敏感，
+    // 若無精確 City ID 容易失敗，因此 MVP 階段先只傳名稱，讓使用者進入 Agoda 後再選日期，成功率最高。
+
     return {
-      url: `https://www.agoda.com/zh-tw/search?text=${nameEncoded}`,
-      label: '查房價',
+      url: url,
+      label: 'Agoda 訂房',
       isAffiliate: true,
-      colorClass: 'bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100'
+      colorClass: 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 shadow-sm'
     };
   }
+
   const ticketTypes = ['spot', 'culture', 'nature', 'activity', 'experience', 'transport', 'temple', 'museum'];
   if (ticketTypes.includes(item.type)) {
     return {
-      url: `https://www.klook.com/zh-TW/search?query=${nameEncoded}`,
+      // Klook 也使用 safeName 確保參數正確
+      url: `https://www.klook.com/zh-TW/search?aid=${KLOOK_AID}&query=${safeName}`,
       label: '找票券',
       isAffiliate: true,
-      colorClass: 'bg-orange-50 text-orange-600 border-orange-100 hover:bg-orange-100'
+      colorClass: 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100 shadow-sm'
     };
   }
+
   if (item.url && (item.url.includes('inline') || item.url.includes('opentable') || item.url.includes('eztable'))) {
     return {
       url: item.url,
       label: '訂位',
       isAffiliate: false,
-      colorClass: 'bg-green-50 text-green-600 border-green-100 hover:bg-green-100'
+      colorClass: 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100 shadow-sm'
     };
   }
   return null;
@@ -44,9 +74,7 @@ const TimePickerPopover = ({ onSave, onClose }) => {
     const options = [];
     for (let h = 0; h < 24; h++) {
       for (let m = 0; m < 60; m += 15) {
-        const hourStr = String(h).padStart(2, '0');
-        const minStr = String(m).padStart(2, '0');
-        options.push(`${hourStr}:${minStr}`);
+        options.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
       }
     }
     return options;
@@ -82,7 +110,7 @@ const DurationPickerPopover = ({ onSave, onClose }) => {
   );
 };
 
-const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, isGenerating }) => {
+const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, isGenerating, tripId, tripDate }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, data: { item } });
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showDurationPicker, setShowDurationPicker] = useState(false);
@@ -96,8 +124,10 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
     position: 'relative'
   };
 
-  const googleMapsUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}&query_place_id=${item.place_id || ''}`;
-  const affiliate = getAffiliateLink(item);
+  // Google Maps 安全連結：使用 encodeURIComponent 並帶入 place_id
+  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${item.place_id || ''}`;
+  
+  const affiliate = getAffiliateLink(item, tripDate);
 
   const handleTimeSave = (newTime) => {
     onUpdateItem(item.id, { startTime: newTime });
@@ -107,6 +137,16 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
   const handleDurationSave = (newDuration) => {
     onUpdateItem(item.id, { duration: newDuration, suggestedDuration: newDuration });
     setShowDurationPicker(false);
+  };
+
+  const handleAffiliateClick = (e, linkUrl, label) => {
+    e.stopPropagation();
+    logEvent('click_affiliate', tripId, auth.currentUser?.uid, {
+        itemId: item.id,
+        itemName: item.name,
+        affiliateType: label,
+        url: linkUrl
+    });
   };
 
   return (
@@ -152,52 +192,59 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
             <div className="flex flex-wrap gap-1 mt-2">{item.tags?.slice(0, 3).map((tag, i) => <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">#{tag}</span>)}</div>
           )}
 
-          {/* 🟢 Mobile & Desktop Split Layout for Buttons */}
           <div className="mt-3 pt-2 border-t border-gray-50">
-            
-            {/* 🟢 1. 手機版佈局：分兩排 */}
             <div className="md:hidden flex flex-col gap-3">
-               {/* 上排：重要行動 (查價 + 地圖) - 加大點擊範圍 */}
-               <div className="flex gap-2 w-full">
-                  {affiliate ? (
-                    <a href={affiliate.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex-1 flex items-center justify-center gap-1 py-2.5 rounded-lg text-xs font-bold border transition-colors ${affiliate.colorClass}`}>
-                       <Ticket size={14} /> {affiliate.label}
-                    </a>
-                  ) : item.url ? (
-                    <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center gap-1 py-2.5 rounded-lg text-xs font-bold border bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100">
-                       <Globe size={14} /> 官網
-                    </a>
-                  ) : null}
-                  
-                  <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex-1 flex items-center justify-center gap-1 py-2.5 bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-lg text-xs font-bold border border-gray-100 transition-colors ${!affiliate && !item.url ? 'w-full' : ''}`}>
-                     <MapPin size={14} /> 地圖/評論
+              <div className="flex gap-2 w-full">
+                {affiliate ? (
+                  <a
+                    href={affiliate.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => handleAffiliateClick(e, affiliate.url, affiliate.label)}
+                    className={`flex-1 flex items-center justify-center gap-1 py-2.5 rounded-lg text-xs font-bold border transition-colors ${affiliate.colorClass}`}
+                  >
+                    <Ticket size={14} /> {affiliate.label}
                   </a>
-               </div>
+                ) : item.url ? (
+                  <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="flex-1 flex items-center justify-center gap-1 py-2.5 rounded-lg text-xs font-bold border bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100">
+                    <Globe size={14} /> 官網
+                  </a>
+                ) : null}
 
-               {/* 下排：次要行動 (時間 + 刪除) - 左右分開 */}
-               <div className="flex items-center justify-between px-1">
-                  <div className="relative">
-                    <button onClick={(e) => { e.stopPropagation(); setShowDurationPicker(!showDurationPicker); }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
-                      <Clock size={12} /> <span className="font-medium">{item.suggestedDuration || 60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
-                    </button>
-                    {showDurationPicker && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowDurationPicker(false); }}></div>
-                        <DurationPickerPopover onSave={handleDurationSave} onClose={() => setShowDurationPicker(false)} />
-                      </>
-                    )}
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); onRemove(item.id); }} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
-                     <Trash2 size={16} />
+                <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex-1 flex items-center justify-center gap-1 py-2.5 bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-lg text-xs font-bold border border-gray-100 transition-colors ${!affiliate && !item.url ?
+                  'w-full' : ''}`}>
+                  <MapPin size={14} /> 地圖/評論
+                </a>
+              </div>
+
+              <div className="flex items-center justify-between px-1">
+                <div className="relative">
+                  <button onClick={(e) => {
+                    e.stopPropagation(); setShowDurationPicker(!showDurationPicker);
+                  }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
+                    <Clock size={12} /> <span className="font-medium">{item.suggestedDuration ||
+                      60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
                   </button>
-               </div>
+                  {showDurationPicker && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowDurationPicker(false); }}></div>
+                      <DurationPickerPopover onSave={handleDurationSave} onClose={() => setShowDurationPicker(false)} />
+                    </>
+                  )}
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); onRemove(item.id); }} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
 
-            {/* 🔵 2. 桌面版佈局：維持原本單排 */}
             <div className="hidden md:flex items-center justify-between">
               <div className="relative">
-                <button onClick={(e) => { e.stopPropagation(); setShowDurationPicker(!showDurationPicker); }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
-                  <Clock size={12} /> <span className="font-medium">{item.suggestedDuration || 60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
+                <button onClick={(e) => {
+                  e.stopPropagation(); setShowDurationPicker(!showDurationPicker);
+                }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
+                  <Clock size={12} /> <span className="font-medium">{item.suggestedDuration ||
+                    60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
                 </button>
                 {showDurationPicker && (
                   <>
@@ -208,7 +255,14 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
               </div>
               <div className="flex items-center gap-2">
                 {affiliate ? (
-                  <a href={affiliate.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors border ${affiliate.colorClass}`} title={affiliate.label}>
+                  <a
+                    href={affiliate.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => handleAffiliateClick(e, affiliate.url, affiliate.label)}
+                    className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors border ${affiliate.colorClass}`}
+                    title={affiliate.label}
+                  >
                     <Ticket size={12} /> {affiliate.label}
                   </a>
                 ) : item.url ? (
@@ -217,7 +271,9 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                   </a>
                 ) : null}
                 <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-blue-600 flex items-center gap-1 text-[10px] bg-gray-50 px-2 py-1 rounded hover:bg-blue-50 transition-colors border border-gray-100" title="在 Google 地圖查看評論"><MapPin size={12} /> 地圖/評論 </a>
-                <button onClick={(e) => { e.stopPropagation(); onRemove(item.id); }} className="text-gray-300 hover:text-red-500 p-1 ml-1 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+                <button onClick={(e) => {
+                  e.stopPropagation(); onRemove(item.id);
+                }} className="text-gray-300 hover:text-red-500 p-1 ml-1 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
               </div>
             </div>
 
@@ -298,7 +354,6 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
 
   return (
     <div ref={setNodeRef} className="flex-1 w-full bg-white flex flex-col relative z-10 border-r border-gray-200 h-full">
-      {/* 🟢 桌面版 Header */}
       <div className="hidden md:block p-4 border-b border-gray-100 bg-white sticky top-0 z-20">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -344,7 +399,7 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
               <MapPin size={48} className="opacity-30 text-gray-500" />
             </div>
             <div className="text-center space-y-2">
-              <h3 className="text-lg font-bold text-gray-700">Day {activeDay} 還是一張白紙</h3>
+              <h3 className="text-lg font-bold text-gray-700">Day {activeDay} 還是一張白紙 </h3>
               <p className="text-sm text-gray-500 max-w-[200px] mx-auto">
                 不知道要去哪裡嗎？讓 AI 幫你安排順路的景點與美食吧！
               </p>
@@ -369,6 +424,8 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
                   onPlaceSelect={onPlaceSelect}
                   onUpdateItem={handleUpdateItem}
                   isGenerating={isGenerating}
+                  tripId={currentTrip?.id}
+                  tripDate={currentTrip?.startDate}
                 />
               ))}
             </div>
