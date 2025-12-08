@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
+// 🟢 修正：補上 Sparkles, Wallet, AlertTriangle, MapPin, DollarSign 等所有用到的 Icon
 import { Wallet, Loader2, AlertTriangle, Star, Plus, Heart, Search, MapPin, Sparkles, Clock, DollarSign } from 'lucide-react';
 import { GoogleMap, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
 import { runGemini } from '../utils/gemini';
@@ -223,8 +224,8 @@ export default function MapZone({
     let rawPlaceId = selectedPlace.place_id || placeId;
     if (typeof rawPlaceId === 'string') rawPlaceId = rawPlaceId.replace(/^(ai-|place-|sidebar-)/, '');
     const isTempId = rawPlaceId && (rawPlaceId.startsWith('temp-') || rawPlaceId.includes('lat-'));
-    // 🟢 修正 Google Maps URL
-    const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}${!isTempId ? `&query_place_id=${rawPlaceId}` : ''}`;
+    // Google Maps URL 修正
+    const googleUrl = selectedPlace.url || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(selectedPlace.name)}${!isTempId ? `&query_place_id=${rawPlaceId}` : ''}`;
     
     const currentItinerary = itineraryRef.current || [];
     const existingItem = currentItinerary.find(i => i.id === placeId);
@@ -267,7 +268,18 @@ export default function MapZone({
       return item.lat && item.lng && itemDay === Number(activeDay);
     });
 
-    itineraryPins.sort((a, b) => (a.order || 0) - (b.order || 0));
+    // 🟢 同步 Canvas 的時間排序邏輯
+    itineraryPins.sort((a, b) => {
+        const getMins = (t) => {
+            if(!t) return 9999;
+            const [h,m] = t.split(':').map(Number);
+            return h*60+(m||0);
+        }
+        const timeDiff = getMins(a.startTime) - getMins(b.startTime);
+        if (timeDiff !== 0) return timeDiff;
+        return (a.order || 0) - (b.order || 0);
+    });
+    
     const currentPolylineKey = itineraryPins.map(p => p.id).join('-');
 
     itineraryPins.forEach((item, idx) => {
@@ -301,8 +313,7 @@ export default function MapZone({
           let rawId = item.place_id || item.id;
           if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
           const isTempId = rawId && (rawId.startsWith('temp-') || rawId.includes('lat-'));
-          // 🟢 修正 Google Maps URL
-          const googleUrl = item.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}${!isTempId ? `&query_place_id=${rawId}` : ''}`;
+          const googleUrl = item.url || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}${!isTempId ? `&query_place_id=${rawId}` : ''}`;
           
           const initialData = { name: item.name, rating: item.rating, user_ratings_total: item.user_ratings_total, price_level: item.price_level, place_id: rawId, url: googleUrl, image: item.image };
           setPoiInfo({ position: position, data: initialData, aiSummary: item.aiSummary });

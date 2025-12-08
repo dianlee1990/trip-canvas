@@ -24,6 +24,7 @@ const CATEGORY_FILTERS = [
 ];
 
 const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, handleAddToItinerary, onPlaceSelect, isMobile, isInItinerary }) => {
+  // 保留 @dnd-kit (相容性)
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${item.id}`,
     data: { type: 'sidebar-item', item: item },
@@ -44,6 +45,20 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
     }
   };
 
+  // 🟢 拖曳邏輯修正：多重格式設定，確保相容性
+  const handleNativeDragStart = (e) => {
+    const itemData = JSON.stringify(item);
+    
+    // 設定多種格式以防萬一
+    e.dataTransfer.setData("text/plain", itemData);
+    e.dataTransfer.setData("application/json", itemData);
+    e.dataTransfer.effectAllowed = "copy";
+    e.dataTransfer.dropEffect = "copy";
+    
+    // 寫入全域變數 (React Big Calendar 的最後防線)
+    window.__draggedSidebarItem = itemData;
+  };
+
   const renderPrice = (level) => level !== undefined && level !== null && (
     <span className="flex items-center gap-1 text-xs text-gray-500"><DollarSign size={12} /> {priceMap[level] || 'N/A'}</span>
   );
@@ -57,10 +72,12 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
   return (
     <div
       ref={setNodeRef} {...listeners} {...attributes}
-      className={`group flex gap-3 p-2 rounded-lg transition-all bg-white relative shadow-sm
+      // 🟢 確保 draggable 屬性開啟
+      draggable="true"
+      onDragStart={handleNativeDragStart}
+      className={`group flex gap-3 p-2 rounded-lg transition-all bg-white relative shadow-sm cursor-grab active:cursor-grabbing
       ${isDragging ? 'opacity-50 ring-2 ring-teal-400' : ''}
       ${isFavoriteView ? (isFav ? 'border-l-4 border-orange-500 bg-orange-50' : 'border border-gray-100') : 'border border-gray-100 hover:border-teal-300 hover:shadow-md'}
-      ${isMobile ? '' : 'cursor-grab active:cursor-grabbing'}
       `}
       onClick={handleCardClick}
       style={{ touchAction: isMobile ? 'auto' : 'none' }}
@@ -71,7 +88,6 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
           <h4 className="font-bold text-sm text-gray-800 truncate flex items-center gap-1">
             <IconByType type={item.type} size={14} /> 
             {item.name}
-            {/* 🟢 顯示已排入標記 */}
             {isInItinerary && (
               <span className="ml-auto text-[10px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 border border-teal-100 shrink-0">
                  <CheckCircle2 size={10} /> 已排入
@@ -106,21 +122,20 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
             <Heart size={12} fill={isFav ? "white" : "none"} /> {isFav ?
               '已收藏' : '收藏'}
           </button>
-          {!isFavoriteView && (
-            <button
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleAddToItinerary({ ...item, lat: item.pos?.lat, lng: item.pos?.lng, aiSummary: item.aiSummary, isOpen: item.isOpen });
-                if (navigator.vibrate) navigator.vibrate(50);
-              }}
-              className={`text-xs flex items-center gap-1 font-medium px-2 py-1 rounded w-fit border transition-colors ${isMobile ?
-                'bg-teal-50 text-teal-700 border-teal-200' : 'text-teal-600 border-transparent hover:bg-teal-50 hover:border-teal-100'}`}
-              title="直接加入行程"
-            >
-              <Plus size={12} /> 加入
-            </button>
-          )}
+          
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAddToItinerary({ ...item, lat: item.pos?.lat, lng: item.pos?.lng, aiSummary: item.aiSummary, isOpen: item.isOpen });
+              if (navigator.vibrate) navigator.vibrate(50);
+            }}
+            className={`text-xs flex items-center gap-1 font-medium px-2 py-1 rounded w-fit border transition-colors ${isMobile ?
+              'bg-teal-50 text-teal-700 border-teal-200' : 'text-teal-600 border-transparent hover:bg-teal-50 hover:border-teal-100'}`}
+            title="直接加入行程"
+          >
+            <Plus size={12} /> 加入
+          </button>
         </div>
       </div>
     </div>
@@ -148,7 +163,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 🟢 判斷地點是否已在行程中
   const checkIsAdded = useCallback((item) => {
     const rawId = item.place_id || item.id;
     const cleanId = rawId ? String(rawId).replace(/^(ai-|place-|sidebar-)/, '') : '';
@@ -280,8 +294,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             if (place.opening_hours && typeof place.opening_hours.isOpen === 'function') {
               try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) { }
             }
-            // 🟢 修正 Google Maps URL
-            const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
+            const googleUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
 
             return {
               id: `ai-${place.place_id}`,
@@ -403,8 +416,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
           if (place.opening_hours && typeof place.opening_hours.isOpen === 'function') {
             try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) { }
           }
-          // 🟢 修正 Google Maps URL
-          const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
+          const googleUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
 
           return {
             id: `place-${place.place_id}`,
