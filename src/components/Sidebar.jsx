@@ -111,7 +111,7 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                handleAddToItinerary({ ...item, lat: item.pos?.lat, lng: item.pos?.lng, aiSummary: item.aiSummary });
+                handleAddToItinerary({ ...item, lat: item.pos?.lat, lng: item.pos?.lng, aiSummary: item.aiSummary, isOpen: item.isOpen });
                 if (navigator.vibrate) navigator.vibrate(50);
               }}
               className={`text-xs flex items-center gap-1 font-medium px-2 py-1 rounded w-fit border transition-colors ${isMobile ?
@@ -280,7 +280,8 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             if (place.opening_hours && typeof place.opening_hours.isOpen === 'function') {
               try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) { }
             }
-            const googleUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
+            // 🟢 修正 Google Maps URL
+            const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
 
             return {
               id: `ai-${place.place_id}`,
@@ -402,7 +403,8 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
           if (place.opening_hours && typeof place.opening_hours.isOpen === 'function') {
             try { isOpenStatus = place.opening_hours.isOpen(); } catch (e) { }
           }
-          const googleUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
+          // 🟢 修正 Google Maps URL
+          const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`;
 
           return {
             id: `place-${place.place_id}`,

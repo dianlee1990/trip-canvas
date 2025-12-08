@@ -346,10 +346,10 @@ const EditorPage = ({ isLoaded, user }) => {
     setIsAIModalOpen(false);
     setIsGenerating(false);
     setAiStatus("排程完成");
-    
+
     if (!tripId) return;
 
-    // 1. 更新行程 Context (Metadata: 旅行目的、心情、風格)
+    // 1. 更新行程 Metadata
     if (metaData) {
       try {
         const tripRef = doc(db, 'artifacts', appId, 'trips', tripId);
@@ -359,77 +359,127 @@ const EditorPage = ({ isLoaded, user }) => {
           styles: metaData.styles || [],
           updatedAt: new Date().toISOString()
         });
-        console.log("✅ 行程 Context 已更新");
       } catch (e) {
         console.error("❌ 更新行程 Context 失敗:", e);
       }
     }
 
-    // 2. 處理 AI 生成的行程項目
-    if (generatedData && generatedData.length > 0) {
-      try {
-        const batch = writeBatch(db);
-        const itemsRef = collection(db, 'artifacts', appId, 'trips', tripId, 'items');
+    if (!generatedData || generatedData.length === 0) return;
 
-        // 步驟 A: 清除該天數原本的「舊 AI 行程」，保留「手動行程」
-        // (如果不清除，重複生成會一直堆疊)
-        const itemsToDelete = itinerary.filter(item => 
-          targetDays.includes(Number(item.day)) && 
-          (item.source === 'ai' || (item.id && item.id.startsWith('ai-')))
+    try {
+      const batch = writeBatch(db);
+      const itemsRef = collection(db, 'artifacts', appId, 'trips', tripId, 'items');
+
+      // 步驟 A: 清除舊的 AI 行程 (保留手動)
+      const itemsToDelete = itinerary.filter(item =>
+        targetDays.includes(Number(item.day)) &&
+        (item.source === 'ai' || (item.id && item.id.startsWith('ai-')))
+      );
+      itemsToDelete.forEach(item => {
+        batch.delete(doc(itemsRef, item.id));
+      });
+
+      // 步驟 B: 針對每一天，進行「混合排序」與寫入
+      for (const day of targetDays) {
+        // 1. 找出當天「保留下來」的手動行程 (Anchors)
+        const manualItems = itinerary.filter(item => 
+          Number(item.day) === day && item.source !== 'ai' && !item.id.startsWith('ai-')
         );
 
-        itemsToDelete.forEach(item => {
-          const itemDocRef = doc(db, 'artifacts', appId, 'trips', tripId, 'items', item.id);
-          batch.delete(itemDocRef);
-        });
+        // 2. 找出 AI 為這一天生成的新行程
+        const newAiItemsForDay = generatedData.filter(item => Number(item.day) === day);
 
-        // 步驟 B: 計算新的 Order (接續在現有行程後面)
-        let currentOrder = itinerary.length > 0 ? Math.max(...itinerary.map(i => i.order || 0)) : 0;
+        // 3. 處理 AI Item (比對收藏、防止重複)
+        const processedAiItems = [];
+        newAiItemsForDay.forEach(aiItem => {
+          // 🛑 Double Check: 防止 AI 還是笨笨的推了已存在的點
+          if (manualItems.some(m => m.name === aiItem.name)) return;
 
-        // 步驟 C: 準備新資料
-        generatedData.forEach((item) => {
-          const newDocRef = doc(itemsRef); // 自動產生 Firestore ID
-          currentOrder++;
+          // 🟢 Fix Bug 1: 收藏比對 (Fuzzy Match)
+          // 只要名稱包含，就視為同一個點，使用收藏的 ID 與資料
+          const matchedFav = myFavorites.find(fav => 
+            fav.name === aiItem.name || 
+            fav.name.includes(aiItem.name) || 
+            aiItem.name.includes(fav.name)
+          );
+          
+          // 如果是收藏，使用收藏的 ID (通常是 place-ChIJ...)，這樣 Canvas 才會亮愛心
+          const rawId = matchedFav ? (matchedFav.place_id || matchedFav.id) : `ai-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+          const finalId = rawId; 
 
-          const newItem = {
-            // 使用 ai- 開頭的 ID，確保系統能識別
-            place_id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-            name: item.name,
-            type: item.type || 'spot',
-            // AI 生成當下通常沒有圖片，這會由前端 MapZone 稍後補抓，或設為空
-            image: '', 
-            aiSummary: item.aiSummary || item.description || '',
-            tags: item.tags || [],
-            lat: Number(item.pos?.lat || 0),
-            lng: Number(item.pos?.lng || 0),
-            rating: 0, // AI 資料初始無評分
-            price_level: 0,
-            day: Number(item.day),
-            startTime: item.startTime || null,
-            duration: Number(item.duration || 60),
-            order: currentOrder,
-            createdAt: new Date().toISOString(),
-            // 🟢 關鍵：標記來源為 AI，這樣 Canvas 就會顯示紫色標籤
+          processedAiItems.push({
+            ...aiItem,
+            id: finalId, // 暫存 ID 用於排序
+            place_id: finalId,
+            // 優先使用收藏的圖片與評分，因為那比較準
+            image: matchedFav?.image || '',
+            rating: matchedFav?.rating || 0,
+            user_ratings_total: matchedFav?.user_ratings_total || 0,
+            price_level: matchedFav?.priceLevel || 0,
             source: 'ai', 
-            isOpenNow: null, // AI 預測無法得知即時營業狀態
+            createdAt: new Date().toISOString(),
+            isOpenNow: null,
             openingText: ''
-          };
-
-          batch.set(newDocRef, newItem);
+          });
         });
 
-        // 步驟 D: 送出批次寫入
-        await batch.commit();
-        console.log(`✅ AI 排程寫入成功：清除了 ${itemsToDelete.length} 筆舊 AI 資料，新增了 ${generatedData.length} 筆新資料`);
+        // 4. 合併並依時間排序 (Fix Bug 3)
+        // 關鍵：將所有行程 (手動+AI) 放在一起，依照 startTime 重新排隊
+        const allItemsForDay = [...manualItems, ...processedAiItems];
+        
+        allItemsForDay.sort((a, b) => {
+          // 時間格式可能是 "14:00" 或 undefined
+          const getMinutes = (timeStr) => {
+            if (!timeStr) return 9999; // 沒時間的排最後
+            const [h, m] = timeStr.split(':').map(Number);
+            return h * 60 + (m || 0);
+          };
+          return getMinutes(a.startTime) - getMinutes(b.startTime);
+        });
 
-        // 重新讀取或等待 onSnapshot 自動更新 (Firestore 會自動觸發 UI 更新)
-
-      } catch (error) {
-        console.error("❌ AI 寫入資料庫失敗:", error);
-        alert("寫入行程失敗，請稍後再試");
+        // 5. 批次寫入
+        allItemsForDay.forEach((item, index) => {
+          const newOrder = index + 1;
+          
+          if (item.source === 'manual') {
+            // 如果是手動行程，只更新順序 (order)，不改動其他資料
+            const itemDocRef = doc(itemsRef, item.id);
+            batch.update(itemDocRef, { order: newOrder });
+          } else {
+            // 如果是 AI 行程，新增文件
+            const newDocRef = doc(itemsRef); 
+            batch.set(newDocRef, {
+              place_id: item.place_id,
+              name: item.name,
+              type: item.type || 'spot',
+              image: item.image,
+              aiSummary: item.aiSummary || '',
+              tags: item.tags || [],
+              lat: Number(item.pos?.lat || 0),
+              lng: Number(item.pos?.lng || 0),
+              rating: item.rating,
+              price_level: item.price_level,
+              day: day,
+              startTime: item.startTime, // 這是排序後的關鍵
+              duration: Number(item.duration || 60),
+              order: newOrder,
+              createdAt: item.createdAt,
+              source: 'ai',
+              isOpenNow: null,
+              openingText: ''
+            });
+          }
+        });
       }
+
+      await batch.commit();
+      console.log(`✅ AI 排程混合排序寫入成功`);
+
+    } catch (error) {
+      console.error("❌ AI 寫入資料庫失敗:", error);
+      alert("寫入行程失敗，請稍後再試");
     }
-  }, [tripId, itinerary]);
+  }, [tripId, itinerary, myFavorites]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const handleDragStart = (event) => setActiveDragItem(event.active.data.current?.item || null);

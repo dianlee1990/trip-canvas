@@ -223,7 +223,9 @@ export default function MapZone({
     let rawPlaceId = selectedPlace.place_id || placeId;
     if (typeof rawPlaceId === 'string') rawPlaceId = rawPlaceId.replace(/^(ai-|place-|sidebar-)/, '');
     const isTempId = rawPlaceId && (rawPlaceId.startsWith('temp-') || rawPlaceId.includes('lat-'));
-    const googleUrl = selectedPlace.url || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(selectedPlace.name)}&query_place_id=${!isTempId ? rawPlaceId : ''}`;
+    // 🟢 修正 Google Maps URL
+    const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}${!isTempId ? `&query_place_id=${rawPlaceId}` : ''}`;
+    
     const currentItinerary = itineraryRef.current || [];
     const existingItem = currentItinerary.find(i => i.id === placeId);
     const hasSummary = existingItem?.aiSummary || selectedPlace.aiReason;
@@ -272,7 +274,6 @@ export default function MapZone({
       const position = { lat: item.lat, lng: item.lng };
       path.push(position);
       
-      // 🟢 需求 3：根據來源設定顏色 (AI=紫色, Manual=深青色)
       const isAi = item.source === 'ai' || (item.id && item.id.startsWith('ai-'));
       let fillColor = isAi ? '#9333ea' : '#0f766e'; 
 
@@ -280,7 +281,6 @@ export default function MapZone({
         type: 'itinerary',
         id: item.id,
         position: position,
-        // 🟢 需求 3：加大尺寸，設為實心，顯示順序數字
         icon: {
            path: window.google.maps.SymbolPath.CIRCLE,
            fillColor: fillColor,
@@ -301,7 +301,9 @@ export default function MapZone({
           let rawId = item.place_id || item.id;
           if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
           const isTempId = rawId && (rawId.startsWith('temp-') || rawId.includes('lat-'));
-          const googleUrl = item.url || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}&query_place_id=${!isTempId ? rawId : ''}`;
+          // 🟢 修正 Google Maps URL
+          const googleUrl = item.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}${!isTempId ? `&query_place_id=${rawId}` : ''}`;
+          
           const initialData = { name: item.name, rating: item.rating, user_ratings_total: item.user_ratings_total, price_level: item.price_level, place_id: rawId, url: googleUrl, image: item.image };
           setPoiInfo({ position: position, data: initialData, aiSummary: item.aiSummary });
           if (mapRef.current && rawId && !isTempId && (!item.rating || !item.url || !item.user_ratings_total || !item.image)) {
@@ -317,7 +319,6 @@ export default function MapZone({
       if (!itineraryPins.some(p => p.id === selectedPlace.id)) {
         elements.push({
           type: 'selected', id: selectedPlace.id, position: { lat: selectedPlace.lat, lng: selectedPlace.lng },
-          // 選取點的樣式
           icon: {
               path: window.google.maps.SymbolPath.CIRCLE,
               fillColor: '#ec4899', // Pink

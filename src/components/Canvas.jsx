@@ -142,6 +142,8 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
     position: 'relative'
   };
 
+  const rawId = item.place_id ? String(item.place_id).replace(/^(ai-|place-|sidebar-)/, '') : '';
+  const isRealId = rawId && !rawId.startsWith('temp-');
   const googleMapsUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}&query_place_id=${item.place_id || ''}`;
   const affiliate = getAffiliateLink(item);
 
