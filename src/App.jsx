@@ -296,7 +296,6 @@ const EditorPage = ({ isLoaded, user }) => {
     const currentDayItems = itinerary.filter(i => (i.day || 1) === activeDay);
     const maxOrder = currentDayItems.length > 0 ? Math.max(...currentDayItems.map(i => i.order || 0)) : 0;
 
-    // 🟢 捕捉營業時間文字 (如果 Sidebar 有傳過來)
     let openingText = "";
     if (item.opening_hours?.weekday_text) {
         openingText = Array.isArray(item.opening_hours.weekday_text) 
@@ -310,6 +309,12 @@ const EditorPage = ({ isLoaded, user }) => {
       type: item.type ?? 'spot', 
       image: item.image ?? '',
       aiSummary: item.aiSummary ?? '', 
+      
+      // 🟢 寫入新欄位：AI 詳細資訊
+      aiHighlights: item.aiHighlights || '',
+      aiCost: item.aiCost || '',
+      aiHours: item.aiHours || '',
+
       tags: Array.isArray(item.tags) ? item.tags : [],
       lat: Number(item.lat ?? item.pos?.lat ?? 0), 
       lng: Number(item.lng ?? item.pos?.lng ?? 0),
@@ -320,9 +325,7 @@ const EditorPage = ({ isLoaded, user }) => {
       duration: Number(item.duration ?? 60),
       order: maxOrder + 1, 
       createdAt: new Date().toISOString(),
-      // 🟢 寫入來源 (AI 或 Manual)
       source: item.source || (item.id && item.id.startsWith('ai-') ? 'ai' : 'manual'),
-      // 🟢 寫入營業資訊
       isOpenNow: item.isOpen, 
       openingText: openingText
     };

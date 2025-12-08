@@ -9,7 +9,7 @@ import zhTW from 'date-fns/locale/zh-TW';
 import { 
   MapPin, Clock, Trash2, Sparkles, User, Heart, Share2, 
   Download, ChevronLeft, ChevronRight, Edit3, Loader2, 
-  Ticket, Globe, Bed, Utensils, MoreHorizontal, X 
+  Ticket, Globe, Bed, Utensils, MoreHorizontal, DollarSign 
 } from 'lucide-react';
 import { logEvent } from '../utils/logger';
 import { auth } from '../utils/firebase';
@@ -33,6 +33,7 @@ const localizer = dateFnsLocalizer({
 const DnDCalendar = withDragAndDrop(Calendar);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
+// --- 導購連結設定 ---
 const AGODA_CID = "1427616";
 const AGODA_TAG = "57450_2f19af64ff8c6";
 const KLOOK_AID = "api%7C701%7C57144de842062be037049d9828200a9f%7Cpid%7C101701";
@@ -47,7 +48,7 @@ const getAffiliateLink = (item) => {
       colorClass: 'bg-[#286090] hover:bg-[#1e486d] text-white border-[#204d74]'
     };
   }
-  const ticketTypes = ['spot', 'culture', 'nature', 'activity', 'experience', 'transport', 'temple', 'museum', 'amusement_park'];
+  const ticketTypes = ['spot', 'culture', 'nature', 'activity', 'experience', 'transport', 'temple', 'museum', 'amusement_park', 'tourist_attraction'];
   if (ticketTypes.includes(item.type) || item.tags?.some(t => ticketTypes.includes(t))) {
     return {
       url: `https://www.klook.com/zh-TW/search?aid=${KLOOK_AID}&query=${nameEncoded}`,
@@ -67,7 +68,7 @@ const getAffiliateLink = (item) => {
   return null;
 };
 
-// 🟢 Custom Event：包含 Fix Bug 2 (極簡模式 UI)
+// 🟢 Custom Event Component
 const CustomEvent = ({ event }) => {
   const { item, myFavorites, toggleFavorite, handleRemoveFromItinerary, onPlaceSelect, tripId, sequenceNumber } = event;
   const [showMenu, setShowMenu] = useState(false);
@@ -88,6 +89,7 @@ const CustomEvent = ({ event }) => {
 
   const affiliate = getAffiliateLink(item);
 
+  // 點擊外部關閉選單
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -135,6 +137,21 @@ const CustomEvent = ({ event }) => {
   const duration = (event.end - event.start) / 60000;
   const isTiny = duration < 45;
 
+  // 🟢 智慧整合敘述 (Smart Summary)
+  // 將 營業時間、花費、亮點 串接成一句話
+  const smartSummary = useMemo(() => {
+    const parts = [];
+    if (item.aiHours) parts.push(item.aiHours); // "09:00-22:00"
+    if (item.aiCost) parts.push(`均消 ${item.aiCost}`); // "均消 $100"
+    if (item.aiHighlights) parts.push(item.aiHighlights); // "必吃海南雞"
+    
+    if (parts.length === 0) return item.aiSummary || "";
+    
+    // 用中文全形逗號連接，並截斷過長文字
+    const fullText = parts.join('，');
+    return fullText.length > 50 ? fullText.substring(0, 29) + "..." : fullText;
+  }, [item]);
+
   return (
     <div 
       className={`h-full w-full flex flex-col relative rounded-lg border-l-[4px] shadow-sm transition-all text-gray-800 group
@@ -146,10 +163,9 @@ const CustomEvent = ({ event }) => {
       title={item.name}
       onClick={(e) => !showMenu && onPlaceSelect?.(item)}
     >
-      {/* 🟢 極簡模式：15分鐘 (Fix Bug 2) */}
+      {/* 極簡模式 (15min) */}
       {isTiny ? (
         <div className="flex items-center justify-between h-full px-1.5 overflow-hidden">
-          {/* 左側：編號 + 地名 */}
           <div className="flex items-center gap-1 min-w-0 flex-1">
              <div className={`shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${isAi ? 'bg-purple-500' : 'bg-teal-600'}`}>
                 {sequenceNumber}
@@ -159,17 +175,15 @@ const CustomEvent = ({ event }) => {
              </span>
           </div>
           
-          {/* 右側：導購按鈕優先，放在愛心左邊 */}
-          <div className="flex items-center gap-1 shrink-0 ml-1">
-             {/* 🟢 這裡的按鈕樣式加大，文字完整顯示 */}
+          <div className="flex items-center gap-0.5 shrink-0 ml-1">
              {affiliate && (
                <button 
                  onClick={handleAffiliateClick} 
-                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold shadow-sm ${affiliate.colorClass}`}
+                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold shadow-sm transition-transform active:scale-95 ${affiliate.colorClass}`}
                  title={affiliate.label}
                >
                  <affiliate.icon size={10} className="shrink-0" />
-                 <span className="truncate">{affiliate.label}</span>
+                 <span className="truncate max-w-[50px]">{affiliate.label}</span>
                </button>
              )}
              
@@ -181,14 +195,14 @@ const CustomEvent = ({ event }) => {
              </button>
              <button 
                 onClick={(e) => handleAction(e, () => handleRemoveFromItinerary(item.id))} 
-                className="p-0.5 rounded hover:bg-red-50 text-red-500 transition-colors"
+                className="p-0.5 rounded hover:bg-red-100 text-red-500 transition-colors"
              >
                 <Trash2 size={12} />
              </button>
           </div>
         </div>
       ) : (
-        /* 🟢 完整模式 */
+        /* 完整模式 */
         <>
           <div className="flex justify-between items-start p-1.5 pb-0">
             <div className="flex-1 min-w-0 mr-1">
@@ -229,6 +243,16 @@ const CustomEvent = ({ event }) => {
                </button>
             </div>
           </div>
+
+          {/* 🟢 整合後的 AI 摘要區塊 (取代原本分開的列) */}
+          {smartSummary && (
+             <div className="px-1.5 mt-1 ml-5">
+               <div className="flex items-start gap-1 p-0.5 px-1 rounded bg-white/60 border border-purple-100/50 text-[10px] text-gray-600 leading-tight">
+                 <Sparkles size={8} className="shrink-0 mt-0.5 text-purple-500 fill-purple-200" />
+                 <span className="line-clamp-2">{smartSummary}</span>
+               </div>
+             </div>
+          )}
 
           <div className="mt-auto px-1.5 pb-1.5 pt-1">
             {affiliate ? (
@@ -304,11 +328,9 @@ export default function Canvas({
     };
   }, [currentTrip, activeDay, currentDisplayDate]);
 
-  // 🟢 Fix Bug 1: 確保行程按照時間排序，生成正確的 sequenceNumber
   const events = useMemo(() => {
     const dayItems = itinerary.filter(i => Number(i.day) === activeDay);
     
-    // 強制排序
     dayItems.sort((a, b) => {
         const getMins = (t) => {
             if(!t) return 9999;
@@ -347,7 +369,6 @@ export default function Canvas({
         handleRemoveFromItinerary,
         onPlaceSelect,
         tripId: currentTrip?.id,
-        // 🟢 這裡的 index + 1 現在代表了正確的時間順序
         sequenceNumber: index + 1
       };
     });
@@ -363,7 +384,6 @@ export default function Canvas({
      return base;
   }, [events, currentDisplayDate]);
 
-  // 🟢 Fix Bug 4: 補上埋點 (Move)
   const moveEvent = useCallback(async ({ event, start, end }) => {
     const newStartTime = format(start, 'HH:mm');
     await handleUpdateItem(event.id, { startTime: newStartTime });
@@ -374,7 +394,6 @@ export default function Canvas({
     });
   }, [handleUpdateItem, currentTrip]);
 
-  // 🟢 Fix Bug 4: 補上埋點 (Resize)
   const resizeEvent = useCallback(async ({ event, start, end }) => {
     const newDuration = (end - start) / 60000;
     await handleUpdateItem(event.id, { duration: newDuration });
@@ -392,7 +411,6 @@ export default function Canvas({
     } catch (e) { return null; }
   }, []);
 
-  // 🟢 Fix Bug 4: 補上埋點 (Add)
   const onDropFromOutside = useCallback(async ({ start, end }) => {
     const draggedItemString = window.__draggedSidebarItem;
     if (draggedItemString) {
@@ -407,7 +425,6 @@ export default function Canvas({
             day: activeDay
         });
         
-        // 埋點
         logEvent('add_item_drag', currentTrip?.id, auth.currentUser?.uid, {
             itemName: item.name,
             startTime: startTime,
@@ -471,7 +488,6 @@ export default function Canvas({
 
       <div 
         className="flex-1 overflow-hidden relative"
-        // 🟢 Fix Bug 3: 確保拖曳資料源存在
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
       >
         {isGenerating && (
@@ -496,7 +512,6 @@ export default function Canvas({
           onEventDrop={moveEvent}
           onEventResize={resizeEvent}
           
-          // 🟢 關鍵修正：傳遞 dragFromOutsideItem 屬性
           dragFromOutsideItem={dragFromOutsideItem}
           onDropFromOutside={onDropFromOutside}
           
