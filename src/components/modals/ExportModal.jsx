@@ -91,7 +91,6 @@ export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoa
         });
 
         // B. 初始化 GIS Token Client (用於處理登入授權)
-        // 這是解決 IdentityCredentialError 的關鍵
         tokenClient.current = window.google.accounts.oauth2.initTokenClient({
           client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
           scope: SCOPES,
@@ -109,8 +108,7 @@ export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoa
     initializeGoogleModules();
   }, [isOpen]);
 
-  // 🟢 2. 匯出邏輯 (新版流程)
-  // 🟢 2. 匯出邏輯 (修正日期格式版)
+  // 🟢 2. 匯出邏輯 (完整修正版：含錯誤解析與時區修復)
   const handleExportToGoogleCalendar = async () => {
     if (!isApiReady) {
       alert("Google 服務初始化中，請稍候...");
@@ -132,7 +130,7 @@ export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoa
           throw new Error("缺少旅遊開始日期 (trip.startDate)");
         }
         
-        // 嘗試修正日期格式 (將 / 取代為 -)
+        // 嘗試修正日期格式
         const cleanStartDate = new Date(trip.startDate);
         
         if (isNaN(cleanStartDate.getTime())) {
@@ -156,8 +154,7 @@ export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoa
             const itemDate = new Date(cleanStartDate);
             itemDate.setDate(cleanStartDate.getDate() + (parseInt(item.day) - 1));
             
-            // B. 組合完整的 ISO 時間字串
-            // 格式：YYYY-MM-DDTHH:mm:00
+            // B. 組合完整的 ISO 時間字串 YYYY-MM-DDTHH:mm:00
             const year = itemDate.getFullYear();
             const month = String(itemDate.getMonth() + 1).padStart(2, '0');
             const day = String(itemDate.getDate()).padStart(2, '0');
@@ -175,17 +172,18 @@ export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoa
               return;
             }
 
-            // E. 建立請求物件
+            // E. 建立請求物件 (已加入 TimeZone)
             const eventResource = {
               'summary': `[TripCanvas] ${item.name}`,
               'location': item.name || '',
               'description': `${item.aiSummary || '無摘要'}\n標籤: ${item.tags?.join(', ') || ''}`,
               'start': {
-                'dateTime': startObj.toISOString(), // 例如: 2025-12-08T10:00:00.000Z
-                // 'timeZone': 'Asia/Taipei' // 建議先註解掉 TimeZone，讓 ISO String 自己帶時區資訊，減少衝突
+                'dateTime': startObj.toISOString(),
+                'timeZone': 'Asia/Taipei' // 重新加入時區設定，避免 UTC 誤差
               },
               'end': {
                 'dateTime': endObj.toISOString(),
+                'timeZone': 'Asia/Taipei'
               }
             };
 
@@ -211,17 +209,31 @@ export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoa
         
         // 傳送請求
         const response = await batch.then();
-        console.log("Batch Response Raw:", response);
+        console.log("🔥 Google 完整回應:", response);
 
         // 檢查結果
         const resultValues = Object.values(response.result);
-        const errors = resultValues.filter(res => res.status >= 400); // 抓出所有 4xx 或 5xx 的錯誤
+        const errors = resultValues.filter(res => res.status >= 400);
 
         if (errors.length > 0) {
-          console.error("❌ Google 回傳錯誤:", errors);
-          // 把第一個錯誤訊息印出來給你看
-          const firstErrorMsg = errors[0].result?.error?.message || "未知錯誤";
-          alert(`⚠️ 部分行程匯出失敗！\n錯誤原因: ${firstErrorMsg}\n請查看 Console 了解詳情。`);
+          console.error("❌ Google 拒絕寫入:", errors);
+          
+          // --- 關鍵修改：解析錯誤訊息 ---
+          let errorMsg = "發生未知錯誤";
+          try {
+            // Google 的錯誤訊息通常藏在 body 字串裡
+            if (errors[0].body) {
+                const errorBody = JSON.parse(errors[0].body);
+                errorMsg = errorBody.error?.message || errorBody.error?.code;
+            } else {
+                errorMsg = errors[0].statusText || "Bad Request";
+            }
+          } catch (e) {
+            errorMsg = errors[0].statusText || "格式錯誤 (Bad Request)";
+          }
+          // ---------------------------
+
+          alert(`⚠️ 匯出失敗！Google 回傳錯誤：\n"${errorMsg}"\n\n(請檢查日期/時間格式或截圖此畫面)`);
         } else {
           alert(`🎉 太棒了！成功匯出 ${validEventCount} 個行程到您的 Google 日曆！`);
         }
