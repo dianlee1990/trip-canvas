@@ -1,501 +1,398 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import {
-  X, Sparkles, Tag,
-  FileText, Calendar, AlertCircle,
-  Plane, Camera, Coffee, Map, Sun, Music, Car,
-  ShoppingBag, Utensils, Hotel, Users, Heart, Baby, Armchair, Smile
-} from 'lucide-react';
-import { runGemini } from '../../utils/gemini';
-import { Autocomplete } from '@react-google-maps/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Printer, Loader2, RefreshCcw, Download, ChevronDown, Calendar } from 'lucide-react';
+import { useReactToPrint } from 'react-to-print';
+import { StyleManga, StyleFashion, StyleTravel, StyleJapanese, StyleArt, StyleDiary } from './ExportStyles';
 
-const TRAVEL_STYLES = [
-  { id: 'shopping', label: '逛街購物', emoji: '🛍️' },
-  { id: 'spot', label: '熱門踩點', emoji: '📸' },
-  { id: 'relax', label: '慢活漫遊', emoji: '☕' },
-  { id: 'food', label: '美食探索', emoji: '🍜' },
-  { id: 'nature', label: '自然風景', emoji: '🌲' },
-  { id: 'culture', label: '人文歷史', emoji: '⛩️' },
-  { id: 'drive', label: '自駕兜風', emoji: '🚗' },
-];
+// --- 常數設定 ---
+const CACHE_KEY = 'trip_export_image_cache';
+const CACHE_DURATION = 1000 * 60 * 60 * 12;
+const A4_PIXEL_WIDTH = 794; 
 
-const TRIP_PURPOSES = [
-  { id: 'couple', label: '浪漫蜜月', emoji: '💍' },
-  { id: 'family', label: '新婚/親子', emoji: '👨‍👩‍👧‍👦' },
-  { id: 'friends', label: '朋友出遊', emoji: '🍻' },
-  { id: 'retired', label: '退休漫遊', emoji: '🧓' },
-  { id: 'solo', label: '獨自探索', emoji: '🎒' },
-];
+// Google Calendar API 設定
+const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
+const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
-const TRIP_MOODS = [
-  { id: 'excited', label: '刺激冒險', emoji: '🎢' },
-  { id: 'fresh', label: '新鮮探索', emoji: '✨' },
-  { id: 'healing', label: '療傷放鬆', emoji: '🌿' },
-  { id: 'positive', label: '正能量', emoji: '💪' },
-  { id: 'chill', label: '慵懶隨性', emoji: '🛌' },
-  { id: 'romantic', label: '浪漫氛圍', emoji: '🌹' },
+const STYLES = [
+  {id: 'japanese', name: '日式 Zen', icon: '⛩️', component: StyleJapanese},
+  {id: 'manga', name: '日式漫畫', icon: '🗯️', component: StyleManga},
+  {id: 'fashion', name: '時尚 Vogue', icon: '👠', component: StyleFashion},
+  {id: 'travel', name: '旅人 NatGeo', icon: '🌏', component: StyleTravel},
+  {id: 'art', name: '藝術 Cinema', icon: '🎬', component: StyleArt},
+  {id: 'diary', name: '少女日記', icon: '📝', component: StyleDiary},
 ];
 
 const LOADING_MESSAGES = [
-  "正在掃描當地熱門打卡點...",
-  "正在計算最佳美食路線...",
-  "正在分析您目前的行程空檔...",
-  "AI 正在搜尋必吃招牌菜...",
-  "正在為您尋找順路的隱藏版景點...",
-  "正在確認營業時間...",
-  "正在打包虛擬行李...",
-  "正在挖掘商圈內的熱門好店..."
+  "正在為您繪製行程地圖...", "設計師正在調整排版...", "正在快取圖片以節省流量...",
+  "正在挑選最美的風景照...", "正在計算最佳呈現比例...", "將回憶打包中...", "正在為景點添加濾鏡..."
 ];
 
-const LOADING_ICONS = [Plane, Map, Camera, Utensils, ShoppingBag, Coffee, Car, Sun, Music];
+const getCachedUrl = (key) => {
+  try {
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    const item = cache[key];
+    if (item && item.url && (Date.now() - item.timestamp < CACHE_DURATION)) return item.url;
+  } catch (e) { console.warn('Cache read error', e); }
+  return null;
+};
 
-export default function AIGenerationModal({
-  isOpen,
-  onClose,
-  onGenerate,
-  userFavorites = [],
-  isGenerating,
-  setIsGenerating,
-  setAiStatus,
-  currentTrip,
-  existingItinerary = []
-}) {
-  const [step, setStep] = useState('preferences');
-  const [selectedStyles, setSelectedStyles] = useState(['spot', 'food']);
-  const [selectedPurpose, setSelectedPurpose] = useState('couple');
-  const [selectedMoods, setSelectedMoods] = useState(['fresh']); 
-  const [userNote, setUserNote] = useState('');
-  const [selectedDays, setSelectedDays] = useState([]);
-  const [errorMsg, setErrorMsg] = useState('');
-
-  const [dailyHotels, setDailyHotels] = useState({});
-  const [defaultHotel, setDefaultHotel] = useState('');
-
-  const autocompleteRefs = useRef({});
-
-  const [msgIndex, setMsgIndex] = useState(0);
-  const [iconIndex, setIconIndex] = useState(0);
-
-  useEffect(() => {
-    if (isGenerating) {
-      const msgTimer = setInterval(() => {
-        setMsgIndex(prev => (prev + 1) % LOADING_MESSAGES.length);
-      }, 2500);
-      const iconTimer = setInterval(() => {
-        setIconIndex(prev => (prev + 1) % LOADING_ICONS.length);
-      }, 1800);
-      return () => {
-        clearInterval(msgTimer);
-        clearInterval(iconTimer);
-      };
-    }
-  }, [isGenerating]);
-
-  const tripDays = useMemo(() => {
-    if (!currentTrip?.startDate || !currentTrip?.endDate) return [];
-    const start = new Date(currentTrip.startDate);
-    const end = new Date(currentTrip.endDate);
-    const days = [];
-    let current = new Date(start);
-    let dayCount = 1;
-    while (current <= end) {
-      days.push({ day: dayCount, date: current.toISOString().split('T')[0] });
-      current.setDate(current.getDate() + 1);
-      dayCount++;
-    }
-    return days;
-  }, [currentTrip]);
-
-  useEffect(() => {
-    if (isOpen && tripDays.length > 0) {
-      setSelectedDays(tripDays.map(d => d.day));
-      setStep('preferences');
-      setErrorMsg('');
-      setDailyHotels(prev => {
-        const newHotels = { ...prev };
-        tripDays.forEach(d => {
-          if (!newHotels[d.day]) newHotels[d.day] = "";
-        });
-        return newHotels;
-      });
-    }
-  }, [isOpen, tripDays]);
-
-  if (!isOpen) return null;
-
-  const toggleStyle = (id) => setSelectedStyles(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
-  const toggleMood = (id) => setSelectedMoods(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]); 
-  const toggleDay = (dayNum) => setSelectedDays(prev => prev.includes(dayNum) ? prev.filter(d => d !== dayNum) : [...prev, dayNum]);
-
-  const handleDefaultHotelChange = (val) => {
-    setDefaultHotel(val);
-    setDailyHotels(prev => {
-      const next = { ...prev };
-      tripDays.forEach(d => { next[d.day] = val; });
-      return next;
+const saveCachedUrl = (key, url) => {
+  try {
+    if (!url) return;
+    const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    const ONE_WEEK = 1000 * 60 * 60 * 24 * 7;
+    const cleanCache = {};
+    Object.keys(cache).forEach(k => {
+      if (Date.now() - cache[k].timestamp < ONE_WEEK) cleanCache[k] = cache[k];
     });
-  };
+    cleanCache[key] = { url, timestamp: Date.now() };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cleanCache));
+  } catch (e) { console.warn('Cache write error', e); }
+};
 
-  const handleDailyHotelChange = (day, val) => {
-    setDailyHotels(prev => ({ ...prev, [day]: val }));
-  };
+export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoaded }) {
+  const [currentStyle, setCurrentStyle] = useState('manga');
+  const [enrichedItinerary, setEnrichedItinerary] = useState([]);
+  const [enrichedTrip, setEnrichedTrip] = useState(trip);
+  const [isLoading, setIsLoading] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
+  const [previewScale, setPreviewScale] = useState(0.6);
+  
+  // GAPI 載入狀態
+  const [gapiLoaded, setGapiLoaded] = useState(false);
 
-  const onDefaultPlaceChanged = () => {
-    if (autocompleteRefs.current['default']) {
-      const place = autocompleteRefs.current['default'].getPlace();
-      if (place && place.name) {
-        handleDefaultHotelChange(place.name);
-      }
+  const serviceRef = useRef(null);
+  const isMounted = useRef(false);
+  const componentRef = useRef(null);
+  const previewContainerRef = useRef(null);
+
+  // 🟢 1. 自動載入 Google API Client (GAPI) 腳本
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const loadGapiClient = () => {
+      const script = document.createElement('script');
+      script.src = "https://apis.google.com/js/api.js";
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        window.gapi.load('client:auth2', async () => {
+          console.log("GAPI Loaded");
+          try {
+            await window.gapi.client.init({
+              apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY, // 暫用 Maps Key (需確認有開啟 Calendar API)
+              clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID, // ⚠️ 必須在 .env 設定 Client ID
+              discoveryDocs: DISCOVERY_DOCS,
+              scope: SCOPES,
+            });
+            setGapiLoaded(true);
+          } catch (err) {
+            console.error("GAPI Init Error:", err);
+            // 允許部分失敗 (可能只是沒登入)，但不阻擋 UI
+            setGapiLoaded(true); 
+          }
+        });
+      };
+      document.body.appendChild(script);
+    };
+
+    if (!window.gapi) {
+      loadGapiClient();
+    } else {
+      setGapiLoaded(true);
     }
-  };
+  }, [isOpen]);
 
-  const onDailyPlaceChanged = (day) => {
-    if (autocompleteRefs.current[day]) {
-      const place = autocompleteRefs.current[day].getPlace();
-      if (place && place.name) {
-        handleDailyHotelChange(day, place.name);
-      }
-    }
-  };
-
-  const handleGenerateClick = async () => {
-    if (selectedDays.length === 0) {
-      setErrorMsg("請至少選擇一天");
+  // 🟢 2. 處理 Google Calendar 匯出 (核心修正：迴圈 + 正確日期計算)
+  const handleExportToGoogleCalendar = async () => {
+    if (!gapiLoaded || !window.gapi || !window.gapi.client) {
+      alert("Google API 正在初始化，請稍後再試...");
       return;
     }
 
-    setStep('generating');
-    setIsGenerating(true);
-    setAiStatus("正在啟動...");
+    if (!trip || !itinerary || itinerary.length === 0) {
+      alert("沒有行程可以匯出！");
+      return;
+    }
+
+    // 檢查 Client ID 是否存在
+    if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+      alert("開發者注意：請在 .env 檔案中設定 VITE_GOOGLE_CLIENT_ID 才能使用日曆寫入功能。");
+      return;
+    }
 
     try {
-      const destination = currentTrip?.destination || "旅遊目的地";
-      const stylesLabels = TRAVEL_STYLES.filter(s => selectedStyles.includes(s.id)).map(s => s.label).join('、');
-      const purposeLabel = TRIP_PURPOSES.find(p => p.id === selectedPurpose)?.label || "一般旅遊";
-      const moodsLabels = TRIP_MOODS.filter(m => selectedMoods.includes(m.id)).map(m => m.label).join('、'); 
-      const daysToPlan = selectedDays.join('、');
-      const favoriteNames = userFavorites.length > 0 ? userFavorites.map(f => f.name).join('、') : "無";
+      // 處理登入授權
+      const authInstance = window.gapi.auth2.getAuthInstance();
+      if (!authInstance.isSignedIn.get()) {
+        await authInstance.signIn();
+      }
 
-      // 🟢 關鍵：過濾出所有手動行程的名稱，建立「絕對避雷名單」
-      const manualItems = existingItinerary.filter(i => i.source !== 'ai');
-      const manualItemNames = manualItems.map(i => i.name).join('、');
+      if (!confirm(`即將將 ${itinerary.length} 個行程加入您的 Google 日曆，確定嗎？`)) return;
 
-      // 舊的 AI 行程，這次會被清除重排，所以不需要加入避雷名單
-      // 但如果有其他天數的 AI 行程想要避開，可以加進來 (目前我們先專注在手動行程不重複)
+      const batch = window.gapi.client.newBatch();
+      let eventCount = 0;
+      
+      // 確保 startDate 是有效的 Date 物件
+      const tripStartDate = new Date(trip.startDate); 
+      if (isNaN(tripStartDate.getTime())) {
+        alert("行程開始日期無效，無法計算時間。");
+        return;
+      }
 
-      const flightOut = currentTrip?.flightOut || {};
-      const flightIn = currentTrip?.flightIn || {};
+      // 🔄 迴圈開始：針對每一個行程項目建立 Event
+      itinerary.forEach((item) => {
+        // 只匯出有「天數」與「時間」的項目
+        if (!item.day || !item.time) return;
+        
+        // 🗓️ 計算該項目的具體日期：開始日 + (Day - 1)
+        const itemDate = new Date(tripStartDate);
+        itemDate.setDate(tripStartDate.getDate() + (parseInt(item.day) - 1));
+        const dateStr = itemDate.toISOString().split('T')[0]; // 格式：YYYY-MM-DD
+        
+        // ⏰ 組合完整開始時間 (ISO 8601)
+        const startDateTimeStr = `${dateStr}T${item.time}:00`; 
+        const startObj = new Date(startDateTimeStr);
+        
+        // ⏳ 計算結束時間 (預設停留 60 分鐘，或使用建議時間)
+        const duration = Number(item.duration || item.suggestedDuration || 60);
+        const endObj = new Date(startObj.getTime() + duration * 60000);
 
-      let hotelPrompt = "";
+        // 建立活動物件
+        const event = {
+          'summary': `[TripCanvas] ${item.name}`,
+          'location': item.name,
+          'description': `${item.aiSummary || '無摘要'}\n備註: ${item.tags?.join(', ') || ''}`,
+          'start': {
+            'dateTime': startObj.toISOString(),
+            'timeZone': 'Asia/Taipei' // 建議：未來可改為 trip.timeZone
+          },
+          'end': {
+            'dateTime': endObj.toISOString(),
+            'timeZone': 'Asia/Taipei'
+          }
+        };
 
-      tripDays.forEach((d) => {
-        if (!selectedDays.includes(d.day)) return;
-
-        const isFirstDay = d.day === 1;
-        const isLastDay = d.day === tripDays.length;
-        const tonightHotel = dailyHotels[d.day] || defaultHotel || "市中心";
-        const lastNightHotel = dailyHotels[d.day - 1] || defaultHotel || "市中心";
-
-        let startPoint = isFirstDay
-          ? (flightOut.airport ? `${flightOut.airport} 機場 (抵達 ${flightOut.time || '未定'})` : tonightHotel)
-          : lastNightHotel;
-
-        let endPoint = isLastDay && flightIn.airport
-          ? `${flightIn.airport} 機場 (起飛 ${flightIn.time || '未定'})`
-          : tonightHotel;
-
-        let timeConstraint = "";
-        if (isLastDay && flightIn.time) {
-          timeConstraint = `(需在 ${flightIn.time} 前 2.5 小時抵達機場)`;
-        } else if (isFirstDay && flightOut.time) {
-          timeConstraint = `(行程開始於 ${flightOut.time} 後)`;
-        }
-
-        const currentDayManualItems = manualItems
-          .filter(i => Number(i.day) === d.day)
-          .sort((a, b) => {
-            const timeA = a.startTime ? parseInt(a.startTime.replace(':', '')) : 0;
-            const timeB = b.startTime ? parseInt(b.startTime.replace(':', '')) : 0;
-            return timeA - timeB;
-          });
-
-        let existingContext = "";
-        let existingItemsList = "無";
-
-        if (currentDayManualItems.length > 0) {
-          existingItemsList = currentDayManualItems.map(i => `[${i.startTime || '時間未定'}] ${i.name} (${i.type === 'food' ? '餐飲' : '景點'})`).join(' -> ');
-          existingContext = `
-            ★ 【重要：該日既有固定行程 (用戶手動加入)】
-            目前該日使用者已手動安排：${existingItemsList}。
-            
-            請遵守以下「填空排程」規則：
-            1. **保留固定點**：請將上述地點保留在行程中，不可移除。
-            2. **填補空檔**：請分析上述行程的時間點，找出「空檔」並插入適合的新景點或餐廳。
-            3. **順路安排**：新插入的點必須與固定點地理位置順路。
-          `;
-        }
-
-        hotelPrompt += `- Day ${d.day} : 起點 [${startPoint}] -> 終點 [${endPoint}] ${timeConstraint}${existingContext}\n`;
+        // 加入 Batch 請求
+        const request = window.gapi.client.calendar.events.insert({
+          'calendarId': 'primary',
+          'resource': event
+        });
+        batch.add(request);
+        eventCount++;
       });
 
-      const prompt = `
-        你是一位旅遊規劃大師。請針對「${destination}」規劃第 [${daysToPlan}] 天行程。
-
-        【本次旅行目的：${purposeLabel} (Critical)】
-        請務必根據此目的調整景點選擇與節奏：
-        - 若為「浪漫蜜月」：請多安排氣氛佳的餐廳、夜景、放鬆行程。
-        - 若為「新婚/親子」：請安排適合推車、有育嬰室、小孩感興趣的樂園或公園，避免太累的爬山。
-        - 若為「退休漫遊」：請安排少走路、有電梯、步調緩慢的景點，多安排休息時間。
-        - 若為「朋友出遊」：可以安排熱鬧、適合拍照打卡、逛街或夜生活的行程。
-        - 若為「獨自探索」：可以安排深度文化、咖啡廳發呆或特色小店。
-
-        【心情與風格設定：${moodsLabels} (Critical)】
-        【風格設定：${stylesLabels}】
-        
-        【每日主題分配策略 (Daily Theme Allocation)】
-        由於使用者選擇了多種心情/風格，請不要將它們混雜在每一天，而是嘗試 **將不同主題分配到不同天數**，創造層次感。
-        例如（若使用者選了「刺激」和「放鬆」）：
-        - Day 1 主題：刺激冒險（去樂園、玩水）
-        - Day 2 主題：療傷放鬆（泡溫泉、看海）
-        
-        請在產生結果時，將該日的主題氛圍反映在景點選擇上。
-
-        【區域規劃策略 (Critical - 防止繞圈圈)】
-        為了讓行程更順暢且豐富，請嚴格遵守以下「區域集中」與「每日差異化」原則：
-        1. **每日一區 (One Zone Per Day)**：
-           - 每一天的行程必須 **集中在同一個主要區域或商圈**。
-           - 例如 Day 1 專攻「區域A」，Day 2 專攻「區域B」。
-           - **嚴禁** 為了填滿時間而在不同大區域間反覆穿梭。
-        
-        2. **區域不重疊 (Distinct Zones)**：
-           - 不同天數的行程，應盡量選擇 **完全不同** 的地理區域。
-
-        3. **城鄉搭配 (Mix Urban & Nature)**：
-           - 若規劃天數超過 3 天，請至少安排 1 天前往 **稍微遠離市中心** 的近郊景點。
-
-        【絕對避雷名單 (Strictly Excluded)】
-        以下地點是使用者已經手動安排好的，**絕對禁止** 再次出現在你的推薦名單中（除非是同一天不同時段的同一地點，例如飯店）：
-        ⛔ 避雷名單：${manualItemNames}
-        (請選擇其他尚未安排的景點或餐廳來填補空檔)
-
-        【最高優先級：住宿串聯與順路邏輯】
-        請務必根據以下每日的「起點」與「終點」來安排中間的景點，確保行程順暢，不要折返跑：
-        ${hotelPrompt}
-
-        【移動日特別指令：A點到B點的沿途旅遊 (Critical)】
-        若當日的「起點」與「終點」不同（例如從 A城市 移動到 B城市）：
-        1. 該日行程 **必須** 呈現為「A點 -> 沿途景點 -> B點」的線性路徑。
-        2. 請根據地理位置，安排 **起點與終點之間** 的順路景點。
-
-        【強制規則：起訖點必列入】
-        請務必將每日的「起點」與「終點」明確列入行程中，生成對應的 JSON 物件。
-
-        【三餐保障規則 (Critical)】
-        AI 必須檢查每日行程是否包含早、中、晚三餐。
-        1. **檢查現有行程**：若「既有行程」中已包含餐廳、夜市或標記為 'food' 的地點，則視為該餐已解決。
-        2. **補充缺漏**：若發現某餐有空檔且未安排，**必須** 插入一個推薦餐廳或特色小吃。
-
-        【最高優先級：營業時間與時段邏輯】
-        請嚴格遵守各類型景點的營業時間，並反映在 "startTime" 欄位中。
-
-        【使用者偏好】
-        - 必遊/收藏(優先安排)：${favoriteNames}
-        - 備註：${userNote || "無"}
-
-        【aiSummary 欄位撰寫規則】：請用繁體中文，控制在 30 字以內，不要有前言後語。
-
-        【格式規範】
-        回傳純 JSON 陣列。
-        [
-          {
-            "day": number,
-            "name": string,
-            "type": "spot"|"food"|"hotel"|"transport",
-            "aiSummary": string,
-            "tags": string[],
-            "startTime": string (HH:MM),
-            "suggestedTimeSlot": "morning"|"afternoon"|"evening",
-            "duration": number (停留分鐘數),
-            "pos": { "lat": number, "lng": number }
-          }
-        ]
-      `;
-
-      const rawResponse = await runGemini(prompt);
-      const startIndex = rawResponse.indexOf('[');
-      const endIndex = rawResponse.lastIndexOf(']');
-      if (startIndex === -1 || endIndex === -1) throw new Error("JSON Error");
-      const jsonText = rawResponse.substring(startIndex, endIndex + 1);
-      const generatedData = JSON.parse(jsonText);
-
-      onGenerate(generatedData, selectedDays);
+      // 送出所有請求
+      if (eventCount > 0) {
+        await batch.then((response) => {
+          console.log("Batch response:", response);
+          alert(`🎉 成功！已將 ${eventCount} 個活動加入您的日曆。`);
+        });
+      } else {
+        alert("行程中沒有設定具體時間的項目，無法匯出。");
+      }
 
     } catch (error) {
-      console.error("AI Error:", error);
-      let friendlyError = "AI 連線或解析失敗，請再試一次。";
-      if (error.message.includes("429") || error.message.includes("Resource exhausted")) {
-        friendlyError = "⚠️ AI 目前流量雍塞 (429)，請休息 1 分鐘後再試。";
+      console.error("Calendar Export Error:", error);
+      if (error.error === 'popup_closed_by_user') {
+        alert("您取消了登入授權。");
+      } else {
+        alert(`匯出失敗：${error.message || '請檢查 API 權限或 Client ID 設定'}`);
       }
-      setAiStatus("發生錯誤");
-      setTimeout(() => { setIsGenerating(false); setStep('preferences'); setErrorMsg(friendlyError); }, 2000);
     }
   };
 
-  const CurrentIcon = LOADING_ICONS[iconIndex];
+  useEffect(() => {
+    const calculateScale = () => {
+      if (!previewContainerRef.current) return;
+      const containerWidth = previewContainerRef.current.offsetWidth;
+      const padding = 32; 
+      const availableWidth = containerWidth - padding;
+      let scale = availableWidth / A4_PIXEL_WIDTH;
+      scale = Math.min(Math.max(scale, 0.3), 0.8);
+      setPreviewScale(scale);
+    };
+    calculateScale();
+    window.addEventListener('resize', calculateScale);
+    return () => window.removeEventListener('resize', calculateScale);
+  }, [isOpen]);
+
+  const handlePrint = useReactToPrint({
+    contentRef: componentRef,
+    documentTitle: `TripCanvas_${trip?.title || 'Itinerary'}`,
+    onAfterPrint: () => console.log("列印完成"),
+    pageStyle: `
+      @page { size: A4 portrait; margin: 0; }
+      @media print {
+        html, body { height: auto !important; min-height: 100% !important; overflow: visible !important; }
+        .a4-page { break-after: page !important; page-break-after: always !important; height: 297mm !important; width: 100% !important; }
+      }
+    `,
+  });
+
+  useEffect(() => {
+    if (!isLoading) return;
+    const interval = setInterval(() => {
+      setLoadingMsgIndex(prev => (prev + 1) % LOADING_MESSAGES.length);
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
+  useEffect(() => {
+    isMounted.current = true;
+    if (isOpen) {
+      setIsLoading(true);
+      setProgress(0);
+      setEnrichedTrip(trip);
+      setEnrichedItinerary(JSON.parse(JSON.stringify(itinerary)));
+
+      if (isMapLoaded && window.google && window.google.maps) {
+        if (!serviceRef.current) {
+          const dummyDiv = document.createElement('div');
+          serviceRef.current = new window.google.maps.places.PlacesService(dummyDiv);
+        }
+        executeEnrichmentProcess();
+      } else {
+        setTimeout(() => isMounted.current && setIsLoading(false), 1000);
+      }
+    }
+    return () => { isMounted.current = false; };
+  }, [isOpen, itinerary, isMapLoaded, trip]);
+
+  const executeEnrichmentProcess = async () => {
+    const itemsToFetch = itinerary.filter(item => !item.image || item.image.includes('placehold.co') || item.image.includes('unsplash'));
+    const needCoverImage = !trip.coverImage || trip.coverImage.includes('images.unsplash.com/photo-1540959733332');
+    const totalTasks = itemsToFetch.length + (needCoverImage ? 1 : 0);
+    if (totalTasks === 0) { setProgress(100); setTimeout(() => isMounted.current && setIsLoading(false), 800); return; }
+    
+    let completedTasks = 0;
+    const updateProgress = () => { if (!isMounted.current) return; completedTasks++; setProgress(Math.round((completedTasks / totalTasks) * 100)); };
+    
+    if (needCoverImage) {
+      const cacheKey = `dest_${trip.destination || 'default'}`;
+      const cachedCover = getCachedUrl(cacheKey);
+      if (cachedCover) { if(isMounted.current) setEnrichedTrip(prev => ({ ...prev, coverImage: cachedCover })); updateProgress(); }
+      else { fetchDestinationImage(trip.destination || "Travel").then(newCover => { if (isMounted.current && newCover) { setEnrichedTrip(prev => ({ ...prev, coverImage: newCover })); saveCachedUrl(cacheKey, newCover); } updateProgress(); }); }
+    }
+    
+    const BATCH_SIZE = 5;
+    const updatedItemsMap = {};
+    const getItemCacheKey = (item) => { let idPart = item.place_id || item.id; if (idPart.startsWith('ai-')) idPart = idPart.replace(/^ai-/, '').split('-')[0]; return `place_${idPart}_${item.name}`; };
+    
+    for (let i = 0; i < itemsToFetch.length; i += BATCH_SIZE) {
+      if (!isMounted.current) break;
+      const batch = itemsToFetch.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (item) => {
+        const cacheKey = getItemCacheKey(item);
+        const cachedUrl = getCachedUrl(cacheKey);
+        if (cachedUrl) { updatedItemsMap[item.id] = cachedUrl; updateProgress(); return; }
+        return fetchItemImage(item).then(url => { if (url) { updatedItemsMap[item.id] = url; saveCachedUrl(cacheKey, url); } updateProgress(); });
+      }));
+      await new Promise(r => setTimeout(r, 200));
+    }
+    
+    if (isMounted.current) { 
+        setEnrichedItinerary(prev => prev.map(item => { if (updatedItemsMap[item.id]) return { ...item, image: updatedItemsMap[item.id] }; return item; }));
+        setTimeout(() => setIsLoading(false), 500); 
+    }
+  };
+
+  const fetchItemImage = (item) => {
+    return new Promise((resolve) => {
+      let rawPlaceId = item.place_id;
+      if (rawPlaceId && rawPlaceId.startsWith('ai-')) rawPlaceId = rawPlaceId.replace(/^ai-/, '').split('-')[0];
+      if (rawPlaceId && rawPlaceId.startsWith('place-')) rawPlaceId = rawPlaceId.replace(/^place-/, '');
+      const isValidPlaceId = rawPlaceId && rawPlaceId.length > 20 && !rawPlaceId.includes('temp') && (rawPlaceId.startsWith('ChIJ') || rawPlaceId.startsWith('G_'));
+      const trySearch = () => { if (!item.name) { resolve(null); return; } fallbackSearch(item.name).then(url => { if (url) resolve(url); else fallbackSearch(`${trip.destination || ''} ${item.name}`).then(resolve); }); };
+      if (isValidPlaceId && serviceRef.current) { serviceRef.current.getDetails({ placeId: rawPlaceId, fields: ['photos'] }, (place, status) => { if (status === window.google.maps.places.PlacesServiceStatus.OK && place?.photos?.length > 0) { try { resolve(place.photos[0].getUrl({ maxWidth: 800 })); } catch (e) { trySearch(); } } else { trySearch(); } }); } else { trySearch(); }
+    }).catch(() => resolve(null));
+  };
+
+  const fallbackSearch = (query) => new Promise(resolve => { if (!query || !serviceRef.current) { resolve(null); return; } serviceRef.current.findPlaceFromQuery({ query: query, fields: ['photos'] }, (results, status) => { if (status === window.google.maps.places.PlacesServiceStatus.OK && results?.[0]?.photos?.length > 0) { try { resolve(results[0].photos[0].getUrl({ maxWidth: 800 })); } catch (e) { resolve(null); } } else { resolve(null); } }); });
+  const fetchDestinationImage = (destination) => new Promise(resolve => { if (!serviceRef.current) { resolve(null); return; } serviceRef.current.findPlaceFromQuery({ query: `${destination} travel landmark`, fields: ['photos'] }, (results, status) => { if (status === window.google.maps.places.PlacesServiceStatus.OK && results?.[0]?.photos?.length > 0) { try { resolve(results[0].photos[0].getUrl({ maxWidth: 1200 })); } catch (e) { resolve(null); } } else { resolve(null); } }); }).catch(() => resolve(null));
+  const handleForceRefresh = () => { if (window.confirm("重新搜尋圖片？")) { localStorage.removeItem(CACHE_KEY); setIsLoading(true); executeEnrichmentProcess(); } };
+
+  if (!isOpen || !trip) return null;
+  const SelectedStyleComponent = STYLES.find(s => s.id === currentStyle)?.component || StyleJapanese;
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gray-900/95 backdrop-blur-md text-white">
+        <div className="w-64 flex flex-col items-center gap-6">
+          <Loader2 size={48} className="animate-spin text-blue-400" />
+          <h3 className="text-xl font-bold">{progress}%</h3>
+          <p className="text-sm text-gray-400 animate-pulse">{LOADING_MESSAGES[loadingMsgIndex]}</p>
+          <button onClick={() => setIsLoading(false)} className="mt-8 text-xs text-gray-600 hover:text-gray-400 underline">跳過等待</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-purple-50 to-white">
-          <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2"><Sparkles size={20} className="text-purple-600" /> {step === 'preferences' ?
-            'AI 行程客製化' : 'AI 正在工作中'}</h3>
-          {!isGenerating && <button onClick={onClose}><X size={24} className="text-gray-400 hover:text-gray-600" /></button>}
-        </div>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-0 md:p-4 animate-in fade-in duration-300">
+      <div className="w-full h-full max-w-7xl flex flex-col md:flex-row gap-4 overflow-hidden relative">
 
-        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-          {step === 'preferences' ? (
-            <div className="space-y-6">
-
-              {/* 旅行目的 */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Heart size={16} /> 旅行目的 (AI 將為此優化)</label>
-                {/* 🟢 改為 Grid 佈局，手機版一排三個 */}
-                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
-                  {TRIP_PURPOSES.map(purpose => (
-                    <button key={purpose.id} onClick={() => setSelectedPurpose(purpose.id)} className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 ${selectedPurpose === purpose.id ?
-                      'bg-pink-100 border-pink-300 text-pink-700' : 'bg-white border-gray-200 text-gray-600'}`}>
-                      <span className="text-lg sm:text-base">{purpose.emoji}</span>
-                      <span className="text-xs sm:text-sm">{purpose.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 🟢 旅行心情 (複選) */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Smile size={16} /> 旅行心情 (可複選)</label>
-                {/* 🟢 改為 Grid 佈局，手機版一排三個 */}
-                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
-                  {TRIP_MOODS.map(mood => (
-                    <button key={mood.id} onClick={() => toggleMood(mood.id)} className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 ${selectedMoods.includes(mood.id) ?
-                      'bg-yellow-100 border-yellow-300 text-yellow-700 ring-2 ring-yellow-200' : 'bg-white border-gray-200 text-gray-600'}`}>
-                      <span className="text-lg sm:text-base">{mood.emoji}</span>
-                      <span className="text-xs sm:text-sm">{mood.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 旅行風格 (複選) */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Tag size={16} /> 旅行風格 (可複選)</label>
-                {/* 🟢 改為 Grid 佈局，手機版一排三個 */}
-                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
-                  {TRAVEL_STYLES.map(style => (
-                    <button key={style.id} onClick={() => toggleStyle(style.id)} className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 ${selectedStyles.includes(style.id) ?
-                      'bg-purple-100 border-purple-300 text-purple-700 ring-2 ring-purple-200' : 'bg-white border-gray-200 text-gray-600'}`}>
-                      <span className="text-lg sm:text-base">{style.emoji}</span>
-                      <span className="text-xs sm:text-sm">{style.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 選擇天數 */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Calendar size={16} /> 選擇要重排的天數</label>
-                <div className="text-xs text-gray-500 mb-2">⚠️ 注意：選擇的天數將會<b>清除舊的 AI 行程</b>並重新安排，您手動加入的行程會被保留。</div>
-                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-                  {tripDays.map((d) => (
-                    <div key={d.day} onClick={() => toggleDay(d.day)} className={`cursor-pointer rounded-lg border p-2 flex flex-col items-center justify-center transition-all ${selectedDays.includes(d.day) ?
-                      'bg-purple-600 border-purple-600 text-white' : 'bg-white border-gray-200 text-gray-500'}`}>
-                      <span className="text-xs opacity-80">{d.date.slice(5)}</span>
-                      <span className="font-bold text-sm">D{d.day}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* 每日住宿設定 */}
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-3"><Hotel size={16} /> 每日住宿</label>
-                <div className="mb-4">
-                  <div className="text-xs text-gray-500 mb-1">主要住宿 (輸入後將自動填入所有天數)</div>
-                  <Autocomplete onLoad={(ref) => autocompleteRefs.current['default'] = ref} onPlaceChanged={onDefaultPlaceChanged}>
-                    <input type="text" className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-500 outline-none" placeholder="搜尋飯店..." value={defaultHotel} onChange={(e) => handleDefaultHotelChange(e.target.value)} />
-                  </Autocomplete>
-                </div>
-                <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
-                  {tripDays.filter(d => selectedDays.includes(d.day)).map((d) => (
-                    <div key={d.day} className="flex items-center gap-2">
-                      <span className="text-xs font-bold w-12 text-gray-600">Day {d.day}</span>
-                      <div className="flex-1">
-                        <Autocomplete onLoad={(ref) => autocompleteRefs.current[d.day] = ref} onPlaceChanged={() => onDailyPlaceChanged(d.day)}>
-                          <input type="text" className="w-full border border-gray-200 rounded p-2 text-xs focus:ring-1 focus:ring-purple-500 outline-none" value={dailyHotels[d.day] ||
-                            ''} placeholder={`Day ${d.day} 住宿地點`} onChange={(e) => handleDailyHotelChange(d.day, e.target.value)} />
-                        </Autocomplete>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* 特別備註 */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 mb-2"><FileText size={16} /> 特別備註</label>
-                <textarea className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50" rows={2} placeholder="例如：有帶長輩、想吃海鮮..." value={userNote} onChange={(e) => setUserNote(e.target.value)} />
-              </div>
-
-              {errorMsg && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2"><AlertCircle size={16} /> {errorMsg}</div>}
+        {/* Mobile Controls */}
+        <div className="md:hidden flex flex-col bg-gray-900 p-4 shrink-0 border-b border-gray-800 gap-3">
+          <div className="flex justify-between items-center text-white">
+            <div className="flex items-center gap-2">
+              <Printer size={18} className="text-purple-400"/>
+              <span className="font-bold text-sm">匯出預覽</span>
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 space-y-8 text-center">
-              <div className="relative">
-                <div className="absolute inset-0 bg-purple-200 rounded-full animate-ping opacity-20"></div>
-                <div className="absolute inset-0 bg-purple-100 rounded-full animate-ping opacity-40 delay-150"></div>
-                <div className="w-24 h-24 bg-gradient-to-tr from-purple-50 to-white rounded-full flex items-center justify-center relative z-10 shadow-lg border-2 border-purple-100">
-                  <div key={iconIndex} className="icon-drawing-container text-purple-600">
-                    <CurrentIcon size={48} strokeWidth={1.5} />
-                  </div>
-                  <Sparkles className="absolute -top-2 -right-2 text-yellow-400 animate-bounce" size={24} />
-                </div>
-              </div>
-              <div className="space-y-3 max-w-xs mx-auto">
-                <h4 className="text-xl font-bold text-gray-800 flex items-center justify-center gap-2">
-                  AI 正在施展魔法
-                  <span className="flex space-x-1">
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-0"></span>
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-150"></span>
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-300"></span>
-                  </span>
-                </h4>
-                <p className="text-purple-600 text-sm font-medium h-6 animate-in slide-in-from-bottom-2 fade-in duration-500 key={msgIndex}">
-                  {LOADING_MESSAGES[msgIndex]}
-                </p>
-                <p className="text-gray-400 text-xs">正在為您的 {currentTrip?.destination} 之旅打造最佳行程</p>
-              </div>
-              <div className="w-64 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-500 w-full animate-progress origin-left"></div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {step === 'preferences' && (
-          <div className="p-5 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
-            <button onClick={onClose} className="px-5 py-2.5 text-gray-600 font-medium hover:bg-gray-200 rounded-xl">取消</button>
-            <button onClick={handleGenerateClick} className="px-6 py-2.5 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 shadow-lg flex items-center gap-2"><Sparkles size={18} /> 開始生成</button>
+            <button onClick={onClose} className="p-1 rounded bg-gray-800 text-gray-300"><X size={18}/></button>
           </div>
-        )}
-      </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <select value={currentStyle} onChange={(e) => setCurrentStyle(e.target.value)} className="w-full appearance-none bg-gray-800 text-white border border-gray-700 rounded-lg px-3 py-2.5 text-sm font-bold focus:outline-none focus:border-purple-500">
+                {STYLES.map(s => <option key={s.id} value={s.id}>{s.icon} {s.name}</option>)}
+              </select>
+              <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+            </div>
+            <button onClick={handlePrint} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 whitespace-nowrap"><Download size={16}/> PDF</button>
+            <button onClick={handleExportToGoogleCalendar} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 whitespace-nowrap"><Calendar size={16}/> 日曆</button>
+          </div>
+        </div>
 
-      <style>{`
-        @keyframes progress { 0% { transform: translateX(-100%); } 50% { transform: translateX(0%); } 100% { transform: translateX(100%); } }
-        .animate-progress { animation: progress 2s infinite linear; }
-        @keyframes draw-lines { 0% { stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0; } 10% { opacity: 1;
-        } 100% { stroke-dasharray: 100; stroke-dashoffset: 0; opacity: 1; } }
-        .icon-drawing-container svg path, .icon-drawing-container svg circle, .icon-drawing-container svg line, .icon-drawing-container svg polyline, .icon-drawing-container svg rect { stroke-dasharray: 100; stroke-dashoffset: 100;
-        animation: draw-lines 1.5s ease-out forwards; }
-      `}</style>
+        {/* Desktop Sidebar */}
+        <div className="hidden md:flex w-72 bg-gray-900 rounded-xl p-4 flex-col gap-2 shrink-0 overflow-y-auto border border-gray-800 custom-scrollbar print:hidden">
+          <div className="flex justify-between items-center text-white mb-4 px-2">
+            <div className="flex items-center gap-2">
+              <Printer size={18} className="text-purple-400"/>
+              <span className="font-bold text-sm">匯出行程</span>
+            </div>
+            <button onClick={onClose} className="hover:bg-gray-700 p-1 rounded transition-colors text-gray-400 hover:text-white"><X size={18}/></button>
+          </div>
+          <div className="space-y-2">
+            {STYLES.map(style => (
+              <button key={style.id} onClick={() => setCurrentStyle(style.id)} className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all border ${currentStyle === style.id ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.3)]' : 'bg-gray-800 text-gray-400 border-transparent hover:bg-gray-700'}`}>
+                <span className="text-2xl">{style.icon}</span>
+                <div className="text-left"><div className="font-bold text-sm">{style.name}</div></div>
+              </button>
+            ))}
+          </div>
+          <div className="mt-auto pt-6 border-t border-gray-700 space-y-3">
+            <button onClick={handleExportToGoogleCalendar} className="w-full bg-white border-2 border-green-500 text-green-600 hover:bg-green-50 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition-transform active:scale-95">
+              <Calendar size={18}/> 匯出至 Google 日曆
+            </button>
+            <button onClick={handlePrint} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95">
+              <Download size={16}/> 列印 / 存為 PDF
+            </button>
+          </div>
+        </div>
+
+        {/* Preview Area */}
+        <div ref={previewContainerRef} className="flex-1 bg-gray-800/50 md:rounded-xl overflow-y-auto custom-scrollbar relative flex flex-col items-center p-2 md:p-8 border border-white/10">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 text-white/80 px-4 py-1 rounded-full text-[10px] backdrop-blur font-mono border border-white/10 pointer-events-none print:hidden z-10">PREVIEW MODE</div>
+          <div className="print-preview-wrapper transition-transform duration-300 ease-out origin-top" style={{ transform: `scale(${previewScale})`, marginBottom: `-${(1 - previewScale) * 100}%` }}>
+            <div ref={componentRef}>
+              <SelectedStyleComponent trip={enrichedTrip} itinerary={enrichedItinerary} />
+            </div>
+          </div>
+          <button onClick={handleForceRefresh} className="absolute bottom-6 right-6 bg-gray-800 hover:bg-black text-white p-3 rounded-full shadow-lg opacity-50 hover:opacity-100 transition-all border border-gray-600 print:hidden z-20" title="重新抓圖">
+            <RefreshCcw size={16} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

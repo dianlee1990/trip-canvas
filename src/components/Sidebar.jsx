@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Map, Search, Sparkles, Heart, Plus, Loader2, DollarSign, Clock, Navigation, AlertTriangle,
   ChevronLeft, Camera, ShoppingBag, Bed, Activity, Utensils,
-  Beer, Landmark, Train, Mountain, X
+  Beer, Mountain, X, Car, Coffee // 🟢 新增 Car 與 Coffee Icon
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { IconByType } from '../icons/IconByType';
@@ -10,17 +10,18 @@ import { runGemini } from '../utils/gemini';
 
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/64x64?text=No+Image";
 
+// 🟢 修改 Filter 設定：將「寺廟」改為「咖啡」，「車站」改為「租車」
 const CATEGORY_FILTERS = [
   { id: 'all', label: '綜合', icon: Sparkles },
   { id: 'spot', label: '景點', icon: Camera },
   { id: 'food', label: '美食', icon: Utensils },
   { id: 'shopping', label: '購物', icon: ShoppingBag },
+  { id: 'coffee', label: '咖啡', icon: Coffee }, // ✨ New
   { id: 'massage', label: '按摩', icon: Activity },
   { id: 'hotel', label: '住宿', icon: Bed },
   { id: 'bar', label: '酒吧', icon: Beer },
-  { id: 'temple', label: '寺廟', icon: Landmark },
+  { id: 'rent', label: '租車', icon: Car },      // ✨ New
   { id: 'nature', label: '自然', icon: Mountain },
-  { id: 'transport', label: '車站', icon: Train },
 ];
 
 const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, handleAddToItinerary, onPlaceSelect, isMobile }) => {
@@ -76,14 +77,13 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
           </div>
         </div>
 
-        {/* 🟢 AI 智慧摘要顯示區 */}
+        {/* AI 智慧摘要顯示區 */}
         {item.aiSummary ? (
           <div className="mt-1.5 bg-purple-50 border border-purple-100 rounded px-2 py-1 text-[10px] text-purple-700 leading-tight flex items-start gap-1 animate-in fade-in">
             <Sparkles size={10} className="shrink-0 mt-0.5 fill-purple-200" />
             <span>{item.aiSummary}</span>
           </div>
         ) : (
-          /* 如果沒有 AI 摘要，顯示原本的 Reason (如果是 AI 推薦列表的話) */
           !isFavoriteView && item.aiReason && (
             <p className="text-[10px] text-gray-500 mt-1 line-clamp-1 bg-gray-50 px-1 rounded">{item.aiReason}</p>
           )
@@ -104,7 +104,6 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                // 🟢 加入行程時，記得把 aiSummary 也帶入
                 handleAddToItinerary({ ...item, lat: item.pos?.lat, lng: item.pos?.lng, aiSummary: item.aiSummary });
                 if (navigator.vibrate) navigator.vibrate(50);
               }}
@@ -134,7 +133,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
   const [activeFilter, setActiveFilter] = useState('all');
   const placesServiceRef = useRef(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [isAnalyzing, setIsAnalyzing] = useState(false); // 🟢 AI 分析狀態
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -142,7 +141,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 🟢 只要有輸入文字，就視為搜尋模式 (優先顯示搜尋結果)
   const isSearchMode = searchInput.trim().length > 0;
   const displayList = isSearchMode ? textSearchResults : aiRecommendations;
 
@@ -212,6 +210,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
         setCurrentCityName(cityName);
       }
 
+      // 🟢 根據 Filter 設定 AI Prompt
       let typePrompt = "熱門旅遊景點、必吃餐廳或特色商家";
       if (filterType === 'food') typePrompt = "必吃美食、在地小吃、熱門餐廳";
       if (filterType === 'spot') typePrompt = "熱門旅遊景點、打卡地標、歷史古蹟";
@@ -219,9 +218,9 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       if (filterType === 'massage') typePrompt = "評價好的按摩店、SPA、放鬆場所";
       if (filterType === 'hotel') typePrompt = "特色住宿、熱門飯店";
       if (filterType === 'bar') typePrompt = "熱門酒吧、夜店、居酒屋、特色調酒";
-      if (filterType === 'temple') typePrompt = "知名寺廟、神社、教堂、宗教聖地";
+      if (filterType === 'coffee') typePrompt = "特色咖啡廳、必喝手沖、網美下午茶、甜點店"; // ✨ New
+      if (filterType === 'rent') typePrompt = "租車公司、機車租借、自行車租借服務"; // ✨ New
       if (filterType === 'nature') typePrompt = "自然景觀、公園、登山步道、海灘";
-      if (filterType === 'transport') typePrompt = "主要車站、交通樞紐、特色火車站";
 
       const existingNames = isLoadMore ? aiRecommendations.map(i => i.name).join('、') : "";
       const excludePrompt = isLoadMore ? `(非常重要：請絕對不要重複推薦以下地點： ${existingNames})` : "";
@@ -231,7 +230,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
         現在是旅遊旺季，請挑選本季最流行或評價最高的地點。
         ${excludePrompt}
         請回傳純 JSON 陣列，格式如下：
-        [ { "name": "地點名稱(請用Google Maps能搜尋到的標準名稱)", "type": "spot|food|shopping|massage|hotel", "reason": "推薦原因(10字內)" } ]
+        [ { "name": "地點名稱(請用Google Maps能搜尋到的標準名稱)", "type": "spot|food|shopping|massage|hotel|coffee|rent", "reason": "推薦原因(10字內)" } ]
       `;
 
       const rawResponse = await runGemini(prompt);
@@ -292,9 +291,8 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     }
   }, [mapCenter, fetchCityName, runPlacesServiceRequest, isMapScriptLoaded, currentCityName, aiRecommendations]);
 
-  // 🟢 批次生成摘要函式
   const generateBatchSummaries = async (places) => {
-    const targets = places.slice(0, 6); // 只取前 6 筆，節省 Token
+    const targets = places.slice(0, 6);
     if (targets.length === 0) return;
 
     setIsAnalyzing(true);
@@ -317,11 +315,9 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
 
     try {
       const jsonStr = await runGemini(prompt);
-      // 清理 JSON 字串 (避免 AI 回傳 Markdown code block)
       const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
       const summaryData = JSON.parse(cleanJson);
 
-      // 將 AI 回傳的結果合併回 textSearchResults
       setTextSearchResults(prev => prev.map(item => {
         const aiInfo = summaryData.find(s => s.id === item.place_id);
         if (aiInfo) {
@@ -345,7 +341,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     setIsLoading(true);
     setSearchError(null);
     setTextSearchResults([]);
-    setIsAnalyzing(false); // 重置分析狀態
+    setIsAnalyzing(false);
 
     try {
       let currentBounds;
@@ -388,12 +384,10 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             priceLevel: place.price_level,
             isOpen: isOpenStatus,
             url: googleUrl,
-            aiSummary: null // 初始化 null
+            aiSummary: null
           };
         });
         setTextSearchResults(formattedResults);
-
-        // 🟢 搜尋結果出來後，立即觸發 AI 批次分析
         generateBatchSummaries(formattedResults);
 
       } else {
@@ -450,14 +444,12 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     <aside className="w-full h-full flex flex-col z-20 bg-white border-r border-gray-200 relative">
       <div ref={placesServiceRef} className="absolute top-0 left-0 w-0 h-0 overflow-hidden"></div>
 
-      {/* Header */}
       <div className="h-16 min-h-16 max-h-16 border-b border-gray-200 flex items-center justify-between px-4 bg-white shrink-0 relative z-20">
         <div className="flex items-center flex-1 w-full">
           <button onClick={onBack} className="mr-3 p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-teal-700 transition-colors cursor-pointer shrink-0" title="回到儀表板">
             <ChevronLeft size={24} />
           </button>
 
-          {/* 🟢 Mobile Header Search */}
           <div className="flex-1 md:hidden">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
@@ -468,7 +460,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-9 pr-10 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
               />
-              {/* 右側控制區 (Loader 與 清除按鈕) */}
               <div className="absolute right-3 top-2.5 flex items-center gap-2">
                 {isLoading && isSearchMode && <Loader2 size={16} className="animate-spin text-teal-600" />}
                 {searchInput.length > 0 && (
@@ -483,7 +474,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             </div>
           </div>
 
-          {/* Desktop Logo */}
           <div className="hidden md:flex items-center gap-2">
             <Map className="text-teal-700" size={24} />
             <span className="font-bold text-teal-700 text-lg">TripCanvas</span>
@@ -492,7 +482,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       </div>
 
       <div className="p-4 border-b border-gray-100">
-        {/* 🟢 Desktop Search */}
         <div className="relative mb-3 hidden md:block">
           <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
           <input
@@ -502,7 +491,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             onChange={(e) => setSearchInput(e.target.value)}
             className="w-full pl-9 pr-10 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none transition-shadow"
           />
-          {/* 右側控制區 (Loader 與 清除按鈕) */}
           <div className="absolute right-3 top-2.5 flex items-center gap-2">
             {isLoading && isSearchMode && <Loader2 size={16} className="animate-spin text-teal-600" />}
             {searchInput.length > 0 && (
@@ -557,12 +545,10 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide pb-24 md:pb-24">
         {!isMapScriptLoaded && <div className="bg-red-50 p-2 text-xs text-red-600 mb-2 rounded border border-red-100">⚠️ 地圖載入中...</div>}
 
-        {/* 🟢 搜尋模式邏輯優先：只要有輸入文字，就顯示搜尋結果 */}
         {isSearchMode ? (
           <>
             {searchError === 'API_DENIED' && <div className="bg-red-50 p-3 rounded-lg text-xs text-red-700 mb-4 border border-red-200 flex items-start gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5" /><div><b> API 權限受限 </b><br /> 請檢查 API Key 設定。 </div></div>}
 
-            {/* 🟢 AI 分析中的提示 */}
             {isAnalyzing && !isLoading && (
               <div className="text-[10px] text-purple-600 flex items-center gap-1 justify-center animate-pulse mb-2">
                 <Sparkles size={12} /> AI 正在分析必吃必玩熱點與價格...
@@ -589,7 +575,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
             )}
           </>
         ) : (
-          /* 一般模式：根據 Tab 顯示內容 */
           <>
             {sidebarTab === 'search' && (
               <>

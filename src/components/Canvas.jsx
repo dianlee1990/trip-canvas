@@ -8,7 +8,8 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { IconByType } from '../icons/IconByType';
-import { logEvent } from '../utils/logger';
+// 🟢 引入 Analytics 與 Auth
+import { logEvent } from '../utils/logger'; // 請確認檔名是 logger.js
 import { auth } from '../utils/firebase';
 
 // --- Affiliate Configuration ---
@@ -16,48 +17,72 @@ const AGODA_CID = "1427616";
 const AGODA_TAG = "57450_2f19af64ff8c6";
 const KLOOK_AID = "api%7C701%7C57144de842062be037049d9828200a9f%7Cpid%7C101701";
 
-// Helper: 日期格式化 (保留備用)
-const formatDate = (date) => {
-  if (!date) return '';
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return d.toISOString().split('T')[0];
+// 🟢 新增：行程 Context 處理函式 (含防呆)
+const getTripContext = (trip) => {
+  if (!trip) {
+    // 開發模式下印出警告，方便除錯
+    if (import.meta.env.DEV) console.warn("⚠️ getTripContext: trip is null");
+    return {
+      destination: "Unknown",
+      purpose: "Unknown",
+      moods: "",
+      styles: "",
+      days: 0
+    };
+  }
+  
+  // 建議加入此行 Log 來確認實際資料結構 (Debug 用)
+  if (import.meta.env.DEV) {
+    console.log("Current Trip Data for Context:", trip);
+  }
+
+  // 處理 Moods (可能是陣列，也可能不存在)
+  let moodsStr = "";
+  const rawMoods = trip.moods || trip.selectedMoods; // 嘗試兩種命名
+  if (Array.isArray(rawMoods)) {
+    moodsStr = rawMoods.join(',');
+  } else if (typeof rawMoods === 'string') {
+    moodsStr = rawMoods;
+  }
+
+  // 處理 Styles
+  let stylesStr = "";
+  const rawStyles = trip.styles || trip.selectedStyles;
+  if (Array.isArray(rawStyles)) {
+    stylesStr = rawStyles.join(',');
+  } else if (typeof rawStyles === 'string') {
+    stylesStr = rawStyles;
+  }
+
+  return {
+    destination: trip.destination || "Unknown",
+    // 嘗試讀取 purpose 或 selectedPurpose，若無則回傳 Unknown
+    purpose: trip.purpose || trip.selectedPurpose || "Unknown", 
+    moods: moodsStr,
+    styles: stylesStr,
+    days: (trip.startDate && trip.endDate) ? "calculated" : 1
+  };
 };
 
-const getAffiliateLink = (item, tripStartDate) => {
-  // 1. 防呆機制：統一對名稱進行 URL 編碼，防止 &、空格或中文造成連結失效
-  const safeName = encodeURIComponent(item.name);
-  
+const getAffiliateLink = (item) => {
+  const nameEncoded = encodeURIComponent(item.name);
   if (item.type === 'hotel') {
-    // 2. Agoda 修正邏輯：改用官方 Partner Search Endpoint
-    // cid: 合作夥伴 ID
-    // tag: 追蹤標籤
-    // pcs: 1 (Partner Channel Search) - 關鍵參數，避免被導回首頁
-    // city: 傳入飯店名稱進行模糊比對 (Agoda 允許在 city 欄位傳入關鍵字)
-    let url = `https://www.agoda.com/partners/partnersearch.aspx?cid=${AGODA_CID}&tag=${AGODA_TAG}&pcs=1&city=${safeName}`;
-    
-    // 備註：Partner Search 對於 checkin 參數較為敏感，
-    // 若無精確 City ID 容易失敗，因此 MVP 階段先只傳名稱，讓使用者進入 Agoda 後再選日期，成功率最高。
-
     return {
-      url: url,
-      label: 'Agoda 訂房',
+      url: `https://www.agoda.com/zh-tw/search?cid=${AGODA_CID}&tag=${AGODA_TAG}&text=${nameEncoded}`,
+      label: '查房價',
       isAffiliate: true,
       colorClass: 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 shadow-sm'
     };
   }
-
   const ticketTypes = ['spot', 'culture', 'nature', 'activity', 'experience', 'transport', 'temple', 'museum'];
   if (ticketTypes.includes(item.type)) {
     return {
-      // Klook 也使用 safeName 確保參數正確
-      url: `https://www.klook.com/zh-TW/search?aid=${KLOOK_AID}&query=${safeName}`,
+      url: `https://www.klook.com/zh-TW/search?aid=${KLOOK_AID}&query=${nameEncoded}`,
       label: '找票券',
       isAffiliate: true,
       colorClass: 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100 shadow-sm'
     };
   }
-
   if (item.url && (item.url.includes('inline') || item.url.includes('opentable') || item.url.includes('eztable'))) {
     return {
       url: item.url,
@@ -74,7 +99,9 @@ const TimePickerPopover = ({ onSave, onClose }) => {
     const options = [];
     for (let h = 0; h < 24; h++) {
       for (let m = 0; m < 60; m += 15) {
-        options.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+        const hourStr = String(h).padStart(2, '0');
+        const minStr = String(m).padStart(2, '0');
+        options.push(`${hourStr}:${minStr}`);
       }
     }
     return options;
@@ -110,7 +137,8 @@ const DurationPickerPopover = ({ onSave, onClose }) => {
   );
 };
 
-const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, isGenerating, tripId, tripDate }) => {
+// 🟢 SortableTripItem 接收 tripContext 以豐富埋點資訊
+const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, isGenerating, tripId, tripContext }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, data: { item } });
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showDurationPicker, setShowDurationPicker] = useState(false);
@@ -124,10 +152,8 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
     position: 'relative'
   };
 
-  // Google Maps 安全連結：使用 encodeURIComponent 並帶入 place_id
-  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${item.place_id || ''}`;
-  
-  const affiliate = getAffiliateLink(item, tripDate);
+  const googleMapsUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}&query_place_id=${item.place_id || ''}`;
+  const affiliate = getAffiliateLink(item);
 
   const handleTimeSave = (newTime) => {
     onUpdateItem(item.id, { startTime: newTime });
@@ -139,14 +165,39 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
     setShowDurationPicker(false);
   };
 
+  // 🟢 導購點擊埋點 (加入 Context)
   const handleAffiliateClick = (e, linkUrl, label) => {
     e.stopPropagation();
     logEvent('click_affiliate', tripId, auth.currentUser?.uid, {
         itemId: item.id,
         itemName: item.name,
+        // 🟢 補上 itemType
+        itemType: item.type || 'unknown',
         affiliateType: label,
-        url: linkUrl
+        url: linkUrl,
+        // 🟢 展開 Context 資訊
+        ...tripContext
     });
+  };
+
+  // 🟢 刪除事件埋點 (移至這裡觸發，確保資料完整)
+  const handleDeleteClick = (e) => {
+    e.stopPropagation();
+    
+    logEvent('delete_item', tripId, auth.currentUser?.uid, {
+        itemId: item.id,
+        itemName: item.name,
+        // 🟢 確保 itemType 正確傳入
+        itemType: item.type || 'unknown',
+        aiSummary: item.aiSummary || '',
+        // 🟢 修正：如果 source 為空，預設為 'manual'
+        source: item.source || 'manual', 
+        // 🟢 展開 Context 資訊
+        ...tripContext
+    });
+
+    // 執行實際刪除
+    onRemove(item.id);
   };
 
   return (
@@ -193,6 +244,7 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
           )}
 
           <div className="mt-3 pt-2 border-t border-gray-50">
+            {/* Mobile Layout */}
             <div className="md:hidden flex flex-col gap-3">
               <div className="flex gap-2 w-full">
                 {affiliate ? (
@@ -232,12 +284,14 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                     </>
                   )}
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); onRemove(item.id); }} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
+                {/* 🟢 修改刪除按鈕：綁定 handleDeleteClick */}
+                <button onClick={handleDeleteClick} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
                   <Trash2 size={16} />
                 </button>
               </div>
             </div>
 
+            {/* Desktop Layout */}
             <div className="hidden md:flex items-center justify-between">
               <div className="relative">
                 <button onClick={(e) => {
@@ -271,9 +325,8 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                   </a>
                 ) : null}
                 <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-blue-600 flex items-center gap-1 text-[10px] bg-gray-50 px-2 py-1 rounded hover:bg-blue-50 transition-colors border border-gray-100" title="在 Google 地圖查看評論"><MapPin size={12} /> 地圖/評論 </a>
-                <button onClick={(e) => {
-                  e.stopPropagation(); onRemove(item.id);
-                }} className="text-gray-300 hover:text-red-500 p-1 ml-1 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+                {/* 🟢 修改刪除按鈕：綁定 handleDeleteClick */}
+                <button onClick={handleDeleteClick} className="text-gray-300 hover:text-red-500 p-1 ml-1 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
               </div>
             </div>
 
@@ -317,6 +370,9 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [isSavingDate, setIsSavingDate] = useState(false);
 
+  // 🟢 2. 使用 useMemo 計算 TripContext
+  const tripContext = useMemo(() => getTripContext(currentTrip), [currentTrip]);
+
   const { totalDays, currentDateDisplay } = useMemo(() => {
     if (!currentTrip?.startDate || !currentTrip?.endDate) return { totalDays: 1, currentDateDisplay: '未設定日期' };
     const start = new Date(currentTrip.startDate);
@@ -354,6 +410,7 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
 
   return (
     <div ref={setNodeRef} className="flex-1 w-full bg-white flex flex-col relative z-10 border-r border-gray-200 h-full">
+      {/* Desktop Header */}
       <div className="hidden md:block p-4 border-b border-gray-100 bg-white sticky top-0 z-20">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -425,7 +482,8 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
                   onUpdateItem={handleUpdateItem}
                   isGenerating={isGenerating}
                   tripId={currentTrip?.id}
-                  tripDate={currentTrip?.startDate}
+                  // 🟢 傳入 TripContext
+                  tripContext={tripContext}
                 />
               ))}
             </div>

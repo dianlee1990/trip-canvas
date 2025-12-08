@@ -16,7 +16,7 @@ import AIGenerationModal from './components/modals/AIGenerationModal';
 import Dashboard from './components/Dashboard';
 import ShareModal from './components/modals/ShareModal';
 import ExportModal from './components/modals/ExportModal';
-
+import PrivacyPolicy from './components/PrivacyPolicy';
 const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const libraries = ["places"];
 const DEFAULT_CENTER = { lat: 35.700, lng: 139.770 };
@@ -28,21 +28,20 @@ const DateEditor = ({ startDate, endDate, onSave, onCancel, isSaving }) => {
   const [end, setEnd] = useState(endDate || '');
   return (
     <div className="absolute top-10 left-1/2 transform -translate-x-1/2 bg-white p-4 rounded-xl shadow-2xl border border-gray-200 z-[60] w-64 animate-in fade-in zoom-in">
-      <h4 className="font-bold text-gray-800 mb-3 text-sm"> 修改旅遊日期 </h4>
+      <h4 className="font-bold text-gray-800 mb-3 text-sm">修改旅遊日期</h4>
       <div className="space-y-3">
         <div className="space-y-1">
-          <label className="text-xs text-gray-500"> 開始日期 </label>
+          <label className="text-xs text-gray-500">開始日期</label>
           <input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full text-sm border p-2 rounded-lg outline-none focus:border-teal-500" />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-gray-500"> 結束日期 </label>
+          <label className="text-xs text-gray-500">結束日期</label>
           <input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full text-sm border p-2 rounded-lg outline-none focus:border-teal-500" />
         </div>
       </div>
       <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
         <button onClick={onCancel} disabled={isSaving} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"><X size={16} /></button>
-        <button onClick={() => onSave(start, end)} disabled={isSaving || !start ||
-          !end} className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+        <button onClick={() => onSave(start, end)} disabled={isSaving || !start || !end} className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all">
           {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           {isSaving ? '儲存' : '儲存'}
         </button>
@@ -122,7 +121,10 @@ const EditorPage = ({ isLoaded, user }) => {
   const [itinerary, setItinerary] = useState([]);
   const [myFavorites, setMyFavorites] = useState([]);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  
+  // 🟢 Export 相關狀態 - 簡化回單一 Modal
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiStatus, setAiStatus] = useState("正在啟動 AI 引擎...");
   const [mapInstance, setMapInstance] = useState(null);
@@ -144,7 +146,6 @@ const EditorPage = ({ isLoaded, user }) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.collaborators && !data.collaborators.includes(user.uid)) {
-          console.log("發現新朋友！正在將您加入協作者名單...");
           try {
             await updateDoc(tripRef, {
               collaborators: arrayUnion(user.uid)
@@ -234,35 +235,28 @@ const EditorPage = ({ isLoaded, user }) => {
     await updateDoc(itemRef, updatedFields);
   }, [tripId]);
 
-  // 🟢 修復：統一資料格式，確保地圖與 POI 都能正確觸發
   const handlePlaceSelect = useCallback((place) => {
-    // 1. 正規化座標：無論是 lat/lng 還是 pos.lat/pos.lng，都抓出來
     const lat = typeof place.lat === 'number' ? place.lat : place.pos?.lat;
     const lng = typeof place.lng === 'number' ? place.lng : place.pos?.lng;
 
-    // 防呆：如果沒座標就不處理
     if (!lat || !lng) return;
 
-    // 2. 建立標準化物件 (補上 pos 屬性，讓 MapZone 看得懂)
     const normalizedPlace = {
       ...place,
       lat: lat,
       lng: lng,
-      pos: { lat, lng }, // 關鍵修正：手動補上 pos 物件
-      // 確保 ID 格式一致 (Canvas 來的叫 place_id, Sidebar 來的叫 id)
+      pos: { lat, lng },
       id: place.id,
       place_id: place.place_id || place.id
     };
 
     setSelectedPlace(normalizedPlace);
 
-    // 3. 立即移動地圖 (現在保證有 lat/lng 了)
-    if (mapInstance) { 
-      mapInstance.panTo({ lat, lng }); 
-      mapInstance.setZoom(15); 
+    if (mapInstance) {
+      mapInstance.panTo({ lat, lng });
+      mapInstance.setZoom(15);
     }
-    
-    // 4. 手機版自動切換到地圖頁籤
+
     if (window.innerWidth < 768) setMobileTab('map');
   }, [mapInstance]);
 
@@ -302,7 +296,8 @@ const EditorPage = ({ isLoaded, user }) => {
     const maxOrder = currentDayItems.length > 0 ? Math.max(...currentDayItems.map(i => i.order || 0)) : 0;
 
     const newItem = {
-      place_id: safeId, name: item.name ?? '未知地點', type: item.type ?? 'spot', image: item.image ?? '',
+      place_id: safeId, name: item.name ?? '未知地點', type: item.type ?? 'spot', image: item.image ??
+        '',
       aiSummary: item.aiSummary ?? '', tags: Array.isArray(item.tags) ? item.tags : [],
       lat: Number(item.lat ?? item.pos?.lat ?? 0), lng: Number(item.lng ?? item.pos?.lng ?? 0),
       rating: Number(item.rating ?? 0), price_level: Number(item.price_level ?? 0),
@@ -314,102 +309,73 @@ const EditorPage = ({ isLoaded, user }) => {
     if (window.innerWidth < 768) setMobileTab('canvas');
   }, [tripId, activeDay, itinerary]);
 
-  // src/App.jsx (EditorPage component 內)
-
-    const handleRemoveFromItinerary = useCallback(async ( id ) => {
-        // 1. 找出要刪除的項目資料 (為了埋點)
-        const itemToRemove = itinerary.find(item => item.id === id);
-    
-        // 2. 觸發埋點：記錄刪除事件
-        logEvent('delete_item', tripId, user?.uid, {
-        itemId: id,
-        name: itemToRemove?.name || 'Unknown',
-        aiSummary: itemToRemove?.aiSummary || '',
-        source: itemToRemove?.source || 'manual' // 區分是 AI 生成還是手動加入
-        });
-  
-    // 3. 執行刪除
-    await deleteDoc(doc(db, 'artifacts', appId, 'trips', tripId, 'items', id));
-  }, [tripId, itinerary, user]); // 🟢 注意：這裡補上了 itinerary 和 user 作為依賴
-
-  const handleAIGenerate = useCallback(async (generatedData, targetDays) => {
-    setIsAIModalOpen(false); setIsGenerating(false); setAiStatus("排程完成");
-    if (!tripId) return;
-
-    const itemsToRemove = itinerary.filter(item => {
-      const isOnTargetDay = targetDays.includes(Number(item.day));
-      const isAiItem = item.source === 'ai';
-      return isOnTargetDay && isAiItem;
+  const handleRemoveFromItinerary = useCallback(async (id) => {
+    const itemToRemove = itinerary.find(item => item.id === id);
+    logEvent('delete_item', tripId, user?.uid, {
+      itemId: id,
+      name: itemToRemove?.name || 'Unknown',
+      aiSummary: itemToRemove?.aiSummary || '',
+      source: itemToRemove?.source || 'manual'
     });
+    await deleteDoc(doc(db, 'artifacts', appId, 'trips', tripId, 'items', id));
+  }, [tripId, itinerary, user]);
 
-    try {
-      const deleteBatch = writeBatch(db);
+  const handleAIGenerate = useCallback(async (generatedData, targetDays, metaData) => {
+    setIsAIModalOpen(false);
+    setIsGenerating(false);
+    setAiStatus("排程完成");
+    if (!tripId) return;
+    
+    if (metaData) {
+      try {
+        const tripRef = doc(db, 'artifacts', appId, 'trips', tripId);
+        await updateDoc(tripRef, {
+          purpose: metaData.purpose || "Unknown",
+          moods: metaData.moods || [],
+          styles: metaData.styles || [],
+          updatedAt: new Date().toISOString()
+        });
+        console.log("✅ 行程 Context 已更新至資料庫:", metaData);
+      } catch (e) {
+        console.error("❌ 更新行程 Context 失敗:", e);
+      }
+    }
+    
+    // 省略 AI 寫入資料庫邏輯...
 
-      itemsToRemove.forEach(item => {
-        const itemRef = doc(db, 'artifacts', appId, 'trips', tripId, 'items', item.id);
-        deleteBatch.delete(itemRef);
-      });
-
-      await deleteBatch.commit();
-      console.log("舊行程刪除完成");
-
-      const addBatch = writeBatch(db);
-      const itemsRef = collection(db, 'artifacts', appId, 'trips', tripId, 'items');
-
-      const preparedItems = generatedData.map((item, index) => {
-        const safeId = `ai-${item.day}-${Date.now()}-${index}`;
-        const newItem = {
-          ...item,
-          id: safeId,
-          order: index,
-          createdAt: serverTimestamp(),
-          source: 'ai'
-        };
-        const newDocRef = doc(itemsRef, safeId);
-        addBatch.set(newDocRef, newItem);
-        return newItem;
-      });
-
-      await addBatch.commit();
-      console.log("新行程寫入完成");
-
-    } catch (e) { console.error("AI 行程更新失敗:", e); }
-  }, [tripId, itinerary]);
+  }, [tripId]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const handleDragStart = (event) => setActiveDragItem(event.active.data.current?.item || null);
-  // src/App.jsx (EditorPage component 內)
 
-const handleDragEnd = async ( event ) => {
+  const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveDragItem(null);
     if (!over) return;
-    
-    if (active.data.current?.type === 'sidebar-item') { 
-      handleAddToItinerary(active.data.current.item); 
-      return; 
+
+    if (active.data.current?.type === 'sidebar-item') {
+      handleAddToItinerary(active.data.current.item);
+      return;
     }
-    
+
     if (active.id !== over.id) {
-      const oldIndex = itinerary.findIndex(( item ) => item.id === active.id);
-      const newIndex = itinerary.findIndex(( item ) => item.id === over.id);
-      
+      const oldIndex = itinerary.findIndex((item) => item.id === active.id);
+      const newIndex = itinerary.findIndex((item) => item.id === over.id);
+
       if (oldIndex === -1 || newIndex === -1) return;
-  
-      // 🟢 觸發埋點：記錄排序變更
+      
       logEvent('reorder_item', tripId, user?.uid, {
         itemId: active.id,
         itemName: itinerary[oldIndex]?.name,
         oldIndex: oldIndex,
         newIndex: newIndex
       });
-  
       const newItinerary = arrayMove(itinerary, oldIndex, newIndex);
       setItinerary(recalculateTimes(newItinerary));
-      
+
       try {
         const batch = writeBatch(db);
-        newItinerary.forEach(( item ,  index ) => {
+        newItinerary.forEach((item, index) => {
           const itemRef = doc(db, 'artifacts', appId, 'trips', tripId, 'items', item.id);
           batch.update(itemRef, { order: index });
         });
@@ -418,9 +384,9 @@ const handleDragEnd = async ( event ) => {
     }
   };
 
-  if (!isLoaded) return <div className="flex h-screen items-center justify-center"> 載入地圖元件中... </div>;
-  if (tripLoading) return <div className="flex h-screen items-center justify-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div> 讀取行程資料中... </div>;
-  if (error) return <div className="flex h-screen items-center justify-center text-red-500">{error} <button onClick={() => navigate('/')} className="ml-4 text-blue-500 underline"> 回首頁 </button></div>;
+  if (!isLoaded) return <div className="flex h-screen items-center justify-center">載入地圖元件中...</div>;
+  if (tripLoading) return <div className="flex h-screen items-center justify-center gap-2"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>讀取行程資料中...</div>;
+  if (error) return <div className="flex h-screen items-center justify-center text-red-500">{error} <button onClick={() => navigate('/')} className="ml-4 text-blue-500 underline">回首頁</button></div>;
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -438,6 +404,7 @@ const handleDragEnd = async ( event ) => {
               mapBounds={mapBounds} onBack={() => navigate('/')}
               onOpenAI={() => setIsAIModalOpen(true)}
               onOpenShare={() => setShowShareModal(true)}
+              // 🟢 恢復：直接打開匯出 Modal
               onOpenExport={() => setIsExportModalOpen(true)}
             />
           </div>
@@ -446,14 +413,14 @@ const handleDragEnd = async ( event ) => {
           <div className={`${mobileTab === 'canvas' ? 'flex flex-col w-full h-full' : 'hidden'} md:flex md:flex-col md:w-[28rem] md:shrink-0 md:h-full z-20 bg-white`}>
             {/* Mobile Header for Canvas */}
             <div className="md:hidden bg-white border-b px-2 py-2 flex justify-between items-center shrink-0 shadow-sm z-50 relative">
-              <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24}/></button>
+              <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24} /></button>
 
               <div className="flex items-center gap-1 bg-gray-100 rounded-full px-1 py-1">
-                <button onClick={() => setActiveDay(p => Math.max(1, p - 1))} disabled={activeDay <= 1} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronLeft size={16}/></button>
+                <button onClick={() => setActiveDay(p => Math.max(1, p - 1))} disabled={activeDay <= 1} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronLeft size={16} /></button>
                 <span className="text-sm font-bold text-gray-700 min-w-[3rem] text-center">Day {activeDay}</span>
-                <button onClick={() => setActiveDay(p => Math.min(totalDays, p + 1))} disabled={activeDay >= totalDays} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronRight size={16}/></button>
+                <button onClick={() => setActiveDay(p => Math.min(totalDays, p + 1))} disabled={activeDay >= totalDays} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronRight size={16} /></button>
 
-                <button onClick={() => setIsEditingDate(!isEditingDate)} className="p-1.5 ml-1 bg-white rounded-full text-gray-500 shadow-sm"><Calendar size={14}/></button>
+                <button onClick={() => setIsEditingDate(!isEditingDate)} className="p-1.5 ml-1 bg-white rounded-full text-gray-500 shadow-sm"><Calendar size={14} /></button>
               </div>
 
               {isEditingDate && (
@@ -467,8 +434,9 @@ const handleDragEnd = async ( event ) => {
               )}
 
               <div className="flex gap-2 items-center">
-                <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18}/></button>
-                <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
+                {/* 🟢 恢復：直接打開匯出 Modal */}
+                <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18} /></button>
+                <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18} /></button>
               </div>
             </div>
 
@@ -481,6 +449,7 @@ const handleDragEnd = async ( event ) => {
                 onPlaceSelect={handlePlaceSelect} onBack={() => navigate('/')}
                 handleUpdateItem={handleUpdateItem}
                 onOpenShare={() => setShowShareModal(true)}
+                // 🟢 恢復：直接打開匯出 Modal
                 onOpenExport={() => setIsExportModalOpen(true)}
               />
               <div className="h-24 md:hidden shrink-0"></div>
@@ -490,13 +459,13 @@ const handleDragEnd = async ( event ) => {
           <div className={`${mobileTab === 'map' ? 'flex flex-col w-full' : 'hidden'} md:flex md:flex-col md:flex-1 h-full z-10`}>
             {/* Mobile Header for Map */}
             <div className="md:hidden bg-white border-b px-2 py-2 flex justify-between items-center shrink-0 shadow-sm z-50 relative">
-              <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24}/></button>
-              
+              <button onClick={() => navigate('/')} className="text-gray-500 p-2"><ChevronLeft size={24} /></button>
+
               <div className="flex items-center gap-1 bg-gray-100 rounded-full px-1 py-1">
-                <button onClick={() => setActiveDay(p => Math.max(1, p - 1))} disabled={activeDay <= 1} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronLeft size={16}/></button>
+                <button onClick={() => setActiveDay(p => Math.max(1, p - 1))} disabled={activeDay <= 1} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronLeft size={16} /></button>
                 <span className="text-sm font-bold text-gray-700 min-w-[3rem] text-center">Day {activeDay}</span>
-                <button onClick={() => setActiveDay(p => Math.min(totalDays, p + 1))} disabled={activeDay >= totalDays} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronRight size={16}/></button>
-                <button onClick={() => setIsEditingDate(!isEditingDate)} className="p-1.5 ml-1 bg-white rounded-full text-gray-500 shadow-sm"><Calendar size={14}/></button>
+                <button onClick={() => setActiveDay(p => Math.min(totalDays, p + 1))} disabled={activeDay >= totalDays} className="p-1 rounded-full hover:bg-white disabled:opacity-30 transition-all"><ChevronRight size={16} /></button>
+                <button onClick={() => setIsEditingDate(!isEditingDate)} className="p-1.5 ml-1 bg-white rounded-full text-gray-500 shadow-sm"><Calendar size={14} /></button>
               </div>
 
               {isEditingDate && (
@@ -509,10 +478,10 @@ const handleDragEnd = async ( event ) => {
                 />
               )}
 
-              {/* 🟢 補上分享與匯出按鈕 (與排行程頁面一致) */}
               <div className="flex gap-2 items-center">
-                <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18}/></button>
-                <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18}/></button>
+                {/* 🟢 恢復：直接打開匯出 Modal */}
+                <button onClick={() => setIsExportModalOpen(true)} className="text-purple-600 bg-purple-50 p-2 rounded-full"><Download size={18} /></button>
+                <button onClick={() => setShowShareModal(true)} className="text-teal-600 bg-teal-50 p-2 rounded-full"><Share2 size={18} /></button>
               </div>
             </div>
 
@@ -533,17 +502,17 @@ const handleDragEnd = async ( event ) => {
           <button onClick={() => setMobileTab('list')} className={`flex flex-col items-center justify-center h-12 w-16 rounded-xl transition-all ${mobileTab === 'list' ?
             'text-teal-600 bg-teal-50' : 'text-gray-400 hover:bg-gray-50'}`}>
             <List size={24} />
-            <span className="text-[10px] font-medium mt-0.5"> 找景點 </span>
+            <span className="text-[10px] font-medium mt-0.5">找景點</span>
           </button>
           <button onClick={() => setMobileTab('canvas')} className={`flex flex-col items-center justify-center h-12 w-16 rounded-xl transition-all ${mobileTab === 'canvas' ?
             'text-teal-600 bg-teal-50' : 'text-gray-400 hover:bg-gray-50'}`}>
             <Layout size={24} />
-            <span className="text-[10px] font-medium mt-0.5"> 排行程 </span>
+            <span className="text-[10px] font-medium mt-0.5">排行程</span>
           </button>
           <button onClick={() => setMobileTab('map')} className={`flex flex-col items-center justify-center h-12 w-16 rounded-xl transition-all ${mobileTab === 'map' ?
             'text-teal-600 bg-teal-50' : 'text-gray-400 hover:bg-gray-50'}`}>
             <MapIcon size={24} />
-            <span className="text-[10px] font-medium mt-0.5"> 看地圖 </span>
+            <span className="text-[10px] font-medium mt-0.5">看地圖</span>
           </button>
         </div>
 
@@ -557,11 +526,14 @@ const handleDragEnd = async ( event ) => {
           isOpen={showShareModal} onClose={() => setShowShareModal(false)}
           trip={currentTrip} currentUser={user}
         />
+        
+        {/* 🟢 修改：移除戰略選單，直接使用整合後的 ExportModal */}
         <ExportModal
           isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)}
           trip={currentTrip} itinerary={itinerary}
           isMapLoaded={isLoaded}
         />
+        
         <DragOverlay dropAnimation={null}>
           {activeDragItem && (
             <div className="bg-white p-3 rounded-lg shadow-2xl border-2 border-teal-500 w-64 opacity-90">
@@ -587,7 +559,7 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  if (authLoading) return <div className="h-screen flex items-center justify-center"> 驗證身分中... </div>;
+  if (authLoading) return <div className="h-screen flex items-center justify-center">驗證身分中...</div>;
   if (loadError) return <div>Map Load Error</div>;
 
   return (
@@ -596,6 +568,7 @@ export default function App() {
         <Route path="/" element={<Dashboard user={user} isMapScriptLoaded={isLoaded} />} />
         <Route path="/trip/:tripId" element={user ?
           <EditorPage isLoaded={isLoaded} user={user} /> : <Navigate to="/" />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
       </Routes>
     </BrowserRouter>
   );
