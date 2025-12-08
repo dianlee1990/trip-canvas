@@ -275,6 +275,24 @@ export default function AIGenerationModal({
      const prompt = `
        你是一位旅遊規劃大師。請針對「${destination}」規劃第 [${daysToPlan}] 天行程。
 
+       【最高指導原則：收藏清單優先 (Priority 1)】
+        使用者有一份「待訪收藏清單」，請務必優先將這些地點排入行程。
+        待訪清單：
+        ${favoritesContext}
+
+        【排程策略 (Strategy)】
+        1. **地理分群 (Clustering)**：請分析「待訪收藏清單」中各點的座標位置。
+           - 將距離相近的地點分在同一天 (例如：Day 1 集中在 A 區，Day 2 集中在 B 區)。
+           - 若某天已經有手動固定行程，請優先安排該區域附近的收藏點。
+        
+        2. **填補空檔 (Filling)**：
+           - 如果收藏清單的點都排完了，或當天還有大段空檔，請根據「${purposeLabel}」與「${stylesLabels}」風格，推薦順路的新景點或美食。
+           - 如果收藏清單的點太多，請依照「順路」與「營業時間」原則，選出最適合放入這幾天的點，**不要硬塞導致行程不可行**。
+
+        3. **合理密度 (Reasonable Pace)**：
+           - 每個景點停留約 1-2 小時，餐廳約 1-1.5 小時。
+           - 點與點之間需考量交通時間，不要讓用戶一直在趕路。
+           - 請確保行程看起來是「人類可執行」的，而不是瞬間移動。
 
        【本次旅行目的：${purposeLabel} (Critical)】
        請務必根據此目的調整景點選擇與節奏：
@@ -343,10 +361,7 @@ export default function AIGenerationModal({
        請嚴格遵守各類型景點的營業時間，並反映在 "startTime" 欄位中。
 
 
-       【使用者偏好】
-       - 必遊/收藏(優先安排)：${favoriteNames}
-       - 備註：${userNote || "無"}
-
+    
 
        【aiSummary 欄位撰寫規則】：請用繁體中文，控制在 30 字以內，不要有前言後語。
 

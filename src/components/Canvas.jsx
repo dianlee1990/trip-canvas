@@ -3,7 +3,7 @@ import {
   Clock, MapPin, Trash2, GripVertical, DollarSign,
   Share2, Sparkles, ChevronLeft, ChevronRight, Save, Edit3, X,
   Loader2, Star, ExternalLink, Globe, CalendarCheck, Ticket, Download,
-  User, Heart // 🟢 新增 User 與 Heart icon
+  User, Heart
 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -12,7 +12,6 @@ import { IconByType } from '../icons/IconByType';
 import { logEvent } from '../utils/logger';
 import { auth } from '../utils/firebase';
 
-// --- Affiliate Configuration ---
 const AGODA_CID = "1427616";
 const AGODA_TAG = "57450_2f19af64ff8c6";
 const KLOOK_AID = "api%7C701%7C57144de842062be037049d9828200a9f%7Cpid%7C101701";
@@ -27,7 +26,6 @@ const getTripContext = (trip) => {
       days: 0
     };
   }
-  
   if (import.meta.env.DEV) {
     console.log("Current Trip Data for Context:", trip);
   }
@@ -50,7 +48,7 @@ const getTripContext = (trip) => {
 
   return {
     destination: trip.destination || "Unknown",
-    purpose: trip.purpose || trip.selectedPurpose || "Unknown", 
+    purpose: trip.purpose || trip.selectedPurpose || "Unknown",
     moods: moodsStr,
     styles: stylesStr,
     days: (trip.startDate && trip.endDate) ? "calculated" : 1
@@ -130,7 +128,6 @@ const DurationPickerPopover = ({ onSave, onClose }) => {
   );
 };
 
-// 🟢 SortableTripItem: 接收 myFavorites 與 toggleFavorite
 const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, isGenerating, tripId, tripContext, myFavorites, toggleFavorite }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, data: { item } });
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -148,10 +145,10 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
   const googleMapsUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}&query_place_id=${item.place_id || ''}`;
   const affiliate = getAffiliateLink(item);
 
-  // 🟢 判斷是否為 AI 推薦
-  const isAiRecommendation = item.source === 'ai';
-  // 🟢 判斷是否已收藏 (比對 place_id)
+  // 🟢 判斷來源與收藏狀態
+  const isAi = item.source === 'ai' || (item.id && item.id.startsWith('ai-'));
   const isFav = myFavorites?.some(f => f.id === item.place_id || f.id === `place-${item.place_id}` || f.id === item.id);
+  const isOpenNow = item.isOpenNow;
 
   const handleTimeSave = (newTime) => {
     onUpdateItem(item.id, { startTime: newTime });
@@ -166,34 +163,32 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
   const handleAffiliateClick = (e, linkUrl, label) => {
     e.stopPropagation();
     logEvent('click_affiliate', tripId, auth.currentUser?.uid, {
-        itemId: item.id,
-        itemName: item.name,
-        itemType: item.type || 'unknown',
-        affiliateType: label,
-        url: linkUrl,
-        ...tripContext
+      itemId: item.id,
+      itemName: item.name,
+      itemType: item.type || 'unknown',
+      affiliateType: label,
+      url: linkUrl,
+      ...tripContext
     });
   };
 
   const handleDeleteClick = (e) => {
     e.stopPropagation();
     logEvent('delete_item', tripId, auth.currentUser?.uid, {
-        itemId: item.id,
-        itemName: item.name,
-        itemType: item.type || 'unknown',
-        aiSummary: item.aiSummary || '',
-        source: item.source || 'manual', 
-        ...tripContext
+      itemId: item.id,
+      itemName: item.name,
+      itemType: item.type || 'unknown',
+      aiSummary: item.aiSummary || '',
+      source: item.source || 'manual',
+      ...tripContext
     });
     onRemove(item.id);
   };
 
-  // 🟢 處理收藏點擊
   const handleHeartClick = (e) => {
     e.stopPropagation();
-    // 建構一個符合 toggleFavorite 需要的物件格式
     const favItem = {
-      id: item.place_id || item.id, // 確保 ID 正確
+      id: item.place_id || item.id,
       place_id: item.place_id,
       name: item.name,
       type: item.type,
@@ -211,6 +206,8 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
     <div ref={setNodeRef} style={style} className="group mb-4 outline-none">
       <div className="absolute left-[19px] top-10 bottom-[-24px] w-0.5 bg-gray-200 group-last:hidden z-0"></div>
       <div className="flex gap-4 relative z-10">
+        
+        {/* 左側時間與順序 */}
         <div className="flex flex-col items-center gap-1 min-w-[40px] pt-1 relative">
           {index === 0 ? (
             <>
@@ -227,30 +224,54 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
           ) : (
             <span className="text-xs font-mono font-medium text-gray-400 cursor-default" title="依據上一站時間自動計算">{item.time || '00:00'}</span>
           )}
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm border-2 border-white ${item.type === 'food' ?
-            'bg-orange-100 text-orange-600' : 'bg-teal-100 text-teal-600'}`}>
-            <IconByType type={item.type} size={18} />
+          
+          {/* 🟢 修改：顯示順序數字，顏色區分 AI/手動 */}
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm border-2 border-white text-sm font-bold z-10
+               ${isAi ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-teal-100 text-teal-700 border-teal-200'}
+          `}>
+             {index + 1}
           </div>
         </div>
-        <div onClick={() => !isDragging && onPlaceSelect?.(item)} className={`flex-1 bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group/card ${isGenerating ?
-          'animate-pulse' : ''}`}>
+
+        {/* 卡片本體 */}
+        <div onClick={() => !isDragging && onPlaceSelect?.(item)} className={`flex-1 bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group/card ${isGenerating ? 'animate-pulse' : ''}`}>
           <div className="flex justify-between items-start gap-2">
             <div className="flex flex-col gap-1 w-full">
               <h4 className="font-bold text-gray-800 text-base line-clamp-1">{item.name}</h4>
-              <div className="flex items-center gap-2 text-xs flex-wrap">
-                {item.rating > 0 && <span className="flex items-center text-orange-500 font-bold bg-orange-50 px-1.5 py-0.5 rounded-md">{item.rating} <Star size={10} fill="currentColor" className="ml-0.5" /></span>}
-                {item.price_level > 0 && <span className="text-gray-500 font-medium">{[...Array(item.price_level)].map((_, i) => <span key={i} className="text-gray-800">$</span>)}</span>}
-                
-                {/* 🟢 來源標籤：顯示 AI 推薦或自選 */}
-                <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium ${isAiRecommendation ? 
-                  'bg-purple-50 text-purple-700 border-purple-100' : 'bg-gray-50 text-gray-600 border-gray-100'}`}>
-                  {isAiRecommendation ? <Sparkles size={10} /> : <User size={10} />}
-                  {isAiRecommendation ? 'AI 推薦' : '自選'}
-                </span>
+              
+              {/* 🟢 新增：標籤列 (AI/手動, 收藏) */}
+              <div className="flex items-center gap-2 text-xs flex-wrap mt-0.5">
+                 {isAi ? (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                      <Sparkles size={10} /> AI 推薦
+                    </span>
+                 ) : (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                      <User size={10} /> 自選
+                    </span>
+                 )}
+
+                 {isFav && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-600 border border-orange-200">
+                      <Heart size={10} fill="currentColor" /> 已收藏
+                    </span>
+                 )}
+
+                 {item.rating > 0 && <span className="flex items-center text-orange-500 font-bold bg-orange-50 px-1.5 py-0.5 rounded-md">{item.rating} <Star size={10} fill="currentColor" className="ml-0.5" /></span>}
+                 {item.price_level > 0 && <span className="text-gray-500 font-medium">{[...Array(item.price_level)].map((_, i) => <span key={i} className="text-gray-800">$</span>)}</span>}
               </div>
+
+              {/* 🟢 新增：營業時間顯示 */}
+              {typeof isOpenNow === 'boolean' && (
+                <div className={`text-xs mt-1 flex items-center gap-1 font-medium ${isOpenNow ? 'text-green-600' : 'text-red-500'}`}>
+                  <Clock size={12} />
+                  {isOpenNow ? '營業中 (參考)' : '已打烊 (參考)'}
+                </div>
+              )}
             </div>
             <button {...attributes} {...listeners} className="text-gray-300 hover:text-gray-600 p-1 cursor-grab active:cursor-grabbing"><GripVertical size={16} /></button>
           </div>
+
           {item.aiSummary ? (
             <p className="text-xs text-gray-600 mt-2 line-clamp-2 leading-relaxed bg-gray-50 p-2 rounded-lg border border-gray-100"><Sparkles size={10} className="inline text-purple-500 mr-1" />{item.aiSummary}</p>
           ) : (
@@ -277,8 +298,7 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                   </a>
                 ) : null}
 
-                <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex-1 flex items-center justify-center gap-1 py-2.5 bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-lg text-xs font-bold border border-gray-100 transition-colors ${!affiliate && !item.url ?
-                  'w-full' : ''}`}>
+                <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className={`flex-1 flex items-center justify-center gap-1 py-2.5 bg-gray-50 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-lg text-xs font-bold border border-gray-100 transition-colors ${!affiliate && !item.url ? 'w-full' : ''}`}>
                   <MapPin size={14} /> 地圖/評論
                 </a>
               </div>
@@ -288,8 +308,7 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                   <button onClick={(e) => {
                     e.stopPropagation(); setShowDurationPicker(!showDurationPicker);
                   }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
-                    <Clock size={12} /> <span className="font-medium">{item.suggestedDuration ||
-                      60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
+                    <Clock size={12} /> <span className="font-medium">{item.suggestedDuration || 60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
                   </button>
                   {showDurationPicker && (
                     <>
@@ -298,9 +317,8 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                     </>
                   )}
                 </div>
-                
+
                 <div className="flex items-center gap-1">
-                  {/* 🟢 Mobile 版：新增收藏按鈕 */}
                   <button onClick={handleHeartClick} className={`p-2 rounded-full transition-colors ${isFav ? 'text-orange-500 bg-orange-50' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-50'}`}>
                     <Heart size={16} fill={isFav ? "currentColor" : "none"} />
                   </button>
@@ -317,8 +335,7 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                 <button onClick={(e) => {
                   e.stopPropagation(); setShowDurationPicker(!showDurationPicker);
                 }} className="flex items-center gap-1 text-xs text-gray-500 hover:text-teal-600 hover:bg-teal-50 px-2 py-1 rounded transition-colors" title="點擊修改停留時間">
-                  <Clock size={12} /> <span className="font-medium">{item.suggestedDuration ||
-                    60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
+                  <Clock size={12} /> <span className="font-medium">{item.suggestedDuration || 60} 分鐘 </span><Edit3 size={10} className="opacity-50" />
                 </button>
                 {showDurationPicker && (
                   <>
@@ -345,9 +362,9 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                   </a>
                 ) : null}
                 <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-blue-600 flex items-center gap-1 text-[10px] bg-gray-50 px-2 py-1 rounded hover:bg-blue-50 transition-colors border border-gray-100" title="在 Google 地圖查看評論"><MapPin size={12} /> 地圖/評論 </a>
-                
-                {/* 🟢 Desktop 版：新增收藏按鈕 */}
-                <button onClick={handleHeartClick} className={`p-1 ml-1 rounded transition-colors ${isFav ? 'text-orange-500 bg-orange-50' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-50'}`} title={isFav ? "取消收藏" : "加入收藏"}>
+
+                <button onClick={handleHeartClick} className={`p-1 ml-1 rounded transition-colors ${isFav ?
+                  'text-orange-500 bg-orange-50' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-50'}`} title={isFav ? "取消收藏" : "加入收藏"}>
                   <Heart size={14} fill={isFav ? "currentColor" : "none"} />
                 </button>
 
@@ -362,13 +379,11 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
   );
 };
 
-// 🟢 Canvas: 接收 myFavorites 與 toggleFavorite
 export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpdateTrip, itinerary, isGenerating, aiStatus, setIsAIModalOpen, handleRemoveFromItinerary, onPlaceSelect, onBack, handleUpdateItem, onOpenShare, onOpenExport, myFavorites, toggleFavorite }) {
   const { setNodeRef } = useDroppable({ id: 'canvas-drop-zone' });
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [isSavingDate, setIsSavingDate] = useState(false);
 
-  // 2. 使用 useMemo 計算 TripContext
   const tripContext = useMemo(() => getTripContext(currentTrip), [currentTrip]);
 
   const { totalDays, currentDateDisplay } = useMemo(() => {
@@ -408,7 +423,6 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
 
   return (
     <div ref={setNodeRef} className="flex-1 w-full bg-white flex flex-col relative z-10 border-r border-gray-200 h-full">
-      {/* Desktop Header */}
       <div className="hidden md:block p-4 border-b border-gray-100 bg-white sticky top-0 z-20">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -432,13 +446,13 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
             </div>
             <span className="text-xs text-gray-500 font-medium">{currentDateDisplay}</span>
             {isEditingDate && (
-              <DateEditor
-                startDate={currentTrip?.startDate}
-                endDate={currentTrip?.endDate}
-                onSave={handleSaveDate}
-                onCancel={() => setIsEditingDate(false)}
-                isSaving={isSavingDate}
-              />
+              <div className="absolute top-12 left-1/2 transform -translate-x-1/2 z-50">
+                 {/* 簡化版日期編輯器，實際應用應使用 App.jsx 內的 DateEditor */}
+                 <div className="bg-white p-4 shadow-xl border rounded-lg w-64">
+                    <p className="text-xs text-gray-500 mb-2">請使用上方手機版日期選擇器或回列表頁修改</p>
+                    <button onClick={()=>setIsEditingDate(false)} className="text-xs bg-gray-200 px-2 py-1 rounded">關閉</button>
+                 </div>
+              </div>
             )}
           </div>
           <button onClick={() => setActiveDay(p => p + 1)} disabled={activeDay >= totalDays} className="p-1 rounded-lg hover:bg-white disabled:opacity-30"><ChevronRight size={20} /></button>
@@ -480,9 +494,7 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
                   onUpdateItem={handleUpdateItem}
                   isGenerating={isGenerating}
                   tripId={currentTrip?.id}
-                  // 🟢 傳入 TripContext
                   tripContext={tripContext}
-                  // 🟢 傳入收藏功能
                   myFavorites={myFavorites}
                   toggleFavorite={toggleFavorite}
                 />

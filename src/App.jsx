@@ -288,6 +288,7 @@ const EditorPage = ({ isLoaded, user }) => {
     } catch (e) { console.error("Favorite toggle failed:", e); }
   }, [tripId, myFavorites]);
 
+  // 在 App.jsx 中找到 handleAddToItinerary 並更新：
   const handleAddToItinerary = useCallback(async (item) => {
     if (!tripId) return;
     const rawId = item.place_id ?? item.id;
@@ -295,16 +296,37 @@ const EditorPage = ({ isLoaded, user }) => {
     const currentDayItems = itinerary.filter(i => (i.day || 1) === activeDay);
     const maxOrder = currentDayItems.length > 0 ? Math.max(...currentDayItems.map(i => i.order || 0)) : 0;
 
+    // 🟢 捕捉營業時間文字 (如果 Sidebar 有傳過來)
+    let openingText = "";
+    if (item.opening_hours?.weekday_text) {
+        openingText = Array.isArray(item.opening_hours.weekday_text) 
+          ? item.opening_hours.weekday_text.join('\n') 
+          : String(item.opening_hours.weekday_text);
+    }
+
     const newItem = {
-      place_id: safeId, name: item.name ?? '未知地點', type: item.type ?? 'spot', image: item.image ??
-        '',
-      aiSummary: item.aiSummary ?? '', tags: Array.isArray(item.tags) ? item.tags : [],
-      lat: Number(item.lat ?? item.pos?.lat ?? 0), lng: Number(item.lng ?? item.pos?.lng ?? 0),
-      rating: Number(item.rating ?? 0), price_level: Number(item.price_level ?? 0),
-      day: Number(item.day || activeDay), startTime: item.startTime ?? null, duration: Number(item.duration ?? 60),
-      order: maxOrder + 1, createdAt: new Date().toISOString(),
-      source: 'manual'
+      place_id: safeId, 
+      name: item.name ?? '未知地點', 
+      type: item.type ?? 'spot', 
+      image: item.image ?? '',
+      aiSummary: item.aiSummary ?? '', 
+      tags: Array.isArray(item.tags) ? item.tags : [],
+      lat: Number(item.lat ?? item.pos?.lat ?? 0), 
+      lng: Number(item.lng ?? item.pos?.lng ?? 0),
+      rating: Number(item.rating ?? 0), 
+      price_level: Number(item.price_level ?? 0),
+      day: Number(item.day || activeDay), 
+      startTime: item.startTime ?? null, 
+      duration: Number(item.duration ?? 60),
+      order: maxOrder + 1, 
+      createdAt: new Date().toISOString(),
+      // 🟢 寫入來源 (AI 或 Manual)
+      source: item.source || (item.id && item.id.startsWith('ai-') ? 'ai' : 'manual'),
+      // 🟢 寫入營業資訊
+      isOpenNow: item.isOpen, 
+      openingText: openingText
     };
+    
     await addDoc(collection(db, 'artifacts', appId, 'trips', tripId, 'items'), newItem);
     if (window.innerWidth < 768) setMobileTab('canvas');
   }, [tripId, activeDay, itinerary]);
@@ -324,8 +346,10 @@ const EditorPage = ({ isLoaded, user }) => {
     setIsAIModalOpen(false);
     setIsGenerating(false);
     setAiStatus("排程完成");
-    if (!tripId) return;
     
+    if (!tripId) return;
+
+    // 1. 更新行程 Context (Metadata: 旅行目的、心情、風格)
     if (metaData) {
       try {
         const tripRef = doc(db, 'artifacts', appId, 'trips', tripId);
@@ -335,15 +359,77 @@ const EditorPage = ({ isLoaded, user }) => {
           styles: metaData.styles || [],
           updatedAt: new Date().toISOString()
         });
-        console.log("✅ 行程 Context 已更新至資料庫:", metaData);
+        console.log("✅ 行程 Context 已更新");
       } catch (e) {
         console.error("❌ 更新行程 Context 失敗:", e);
       }
     }
-    
-    // 省略 AI 寫入資料庫邏輯...
 
-  }, [tripId]);
+    // 2. 處理 AI 生成的行程項目
+    if (generatedData && generatedData.length > 0) {
+      try {
+        const batch = writeBatch(db);
+        const itemsRef = collection(db, 'artifacts', appId, 'trips', tripId, 'items');
+
+        // 步驟 A: 清除該天數原本的「舊 AI 行程」，保留「手動行程」
+        // (如果不清除，重複生成會一直堆疊)
+        const itemsToDelete = itinerary.filter(item => 
+          targetDays.includes(Number(item.day)) && 
+          (item.source === 'ai' || (item.id && item.id.startsWith('ai-')))
+        );
+
+        itemsToDelete.forEach(item => {
+          const itemDocRef = doc(db, 'artifacts', appId, 'trips', tripId, 'items', item.id);
+          batch.delete(itemDocRef);
+        });
+
+        // 步驟 B: 計算新的 Order (接續在現有行程後面)
+        let currentOrder = itinerary.length > 0 ? Math.max(...itinerary.map(i => i.order || 0)) : 0;
+
+        // 步驟 C: 準備新資料
+        generatedData.forEach((item) => {
+          const newDocRef = doc(itemsRef); // 自動產生 Firestore ID
+          currentOrder++;
+
+          const newItem = {
+            // 使用 ai- 開頭的 ID，確保系統能識別
+            place_id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+            name: item.name,
+            type: item.type || 'spot',
+            // AI 生成當下通常沒有圖片，這會由前端 MapZone 稍後補抓，或設為空
+            image: '', 
+            aiSummary: item.aiSummary || item.description || '',
+            tags: item.tags || [],
+            lat: Number(item.pos?.lat || 0),
+            lng: Number(item.pos?.lng || 0),
+            rating: 0, // AI 資料初始無評分
+            price_level: 0,
+            day: Number(item.day),
+            startTime: item.startTime || null,
+            duration: Number(item.duration || 60),
+            order: currentOrder,
+            createdAt: new Date().toISOString(),
+            // 🟢 關鍵：標記來源為 AI，這樣 Canvas 就會顯示紫色標籤
+            source: 'ai', 
+            isOpenNow: null, // AI 預測無法得知即時營業狀態
+            openingText: ''
+          };
+
+          batch.set(newDocRef, newItem);
+        });
+
+        // 步驟 D: 送出批次寫入
+        await batch.commit();
+        console.log(`✅ AI 排程寫入成功：清除了 ${itemsToDelete.length} 筆舊 AI 資料，新增了 ${generatedData.length} 筆新資料`);
+
+        // 重新讀取或等待 onSnapshot 自動更新 (Firestore 會自動觸發 UI 更新)
+
+      } catch (error) {
+        console.error("❌ AI 寫入資料庫失敗:", error);
+        alert("寫入行程失敗，請稍後再試");
+      }
+    }
+  }, [tripId, itinerary]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const handleDragStart = (event) => setActiveDragItem(event.active.data.current?.item || null);
@@ -406,6 +492,7 @@ const EditorPage = ({ isLoaded, user }) => {
               onOpenShare={() => setShowShareModal(true)}
               // 🟢 恢復：直接打開匯出 Modal
               onOpenExport={() => setIsExportModalOpen(true)}
+              itinerary={itinerary}
             />
           </div>
 

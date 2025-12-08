@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Map, Search, Sparkles, Heart, Plus, Loader2, DollarSign, Clock, Navigation, AlertTriangle,
   ChevronLeft, Camera, ShoppingBag, Bed, Activity, Utensils,
-  Beer, Mountain, X, Car, Coffee
+  Beer, Mountain, X, Car, Coffee, CheckCircle2
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { IconByType } from '../icons/IconByType';
@@ -23,7 +23,7 @@ const CATEGORY_FILTERS = [
   { id: 'nature', label: '自然', icon: Mountain },
 ];
 
-const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, handleAddToItinerary, onPlaceSelect, isMobile }) => {
+const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, handleAddToItinerary, onPlaceSelect, isMobile, isInItinerary }) => {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${item.id}`,
     data: { type: 'sidebar-item', item: item },
@@ -68,7 +68,16 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
       <img src={imageSrc} onError={() => setImageSrc(PLACEHOLDER_IMAGE_URL)} className="w-16 h-16 rounded object-cover bg-gray-100 border border-gray-200 shrink-0" alt={item.name} />
       <div className="flex-1 min-w-0 flex flex-col justify-between">
         <div>
-          <h4 className="font-bold text-sm text-gray-800 truncate flex items-center gap-1"><IconByType type={item.type} size={14} /> {item.name}</h4>
+          <h4 className="font-bold text-sm text-gray-800 truncate flex items-center gap-1">
+            <IconByType type={item.type} size={14} /> 
+            {item.name}
+            {/* 🟢 顯示已排入標記 */}
+            {isInItinerary && (
+              <span className="ml-auto text-[10px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 border border-teal-100 shrink-0">
+                 <CheckCircle2 size={10} /> 已排入
+              </span>
+            )}
+          </h4>
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-xs text-orange-500 font-bold flex items-center">★{item.rating || 4.0}</span>
             {renderPrice(item.priceLevel)}
@@ -118,7 +127,7 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
   );
 };
 
-export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggleFavorite, handleAddToItinerary, isMapScriptLoaded, mapInstance, mapCenter, onPlaceSelect, mapBounds, onBack, onOpenAI, onOpenShare, onOpenExport }) {
+export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggleFavorite, handleAddToItinerary, isMapScriptLoaded, mapInstance, mapCenter, onPlaceSelect, mapBounds, onBack, onOpenAI, onOpenShare, onOpenExport, itinerary = [] }) {
   const [searchInput, setSearchInput] = useState('');
   const [textSearchResults, setTextSearchResults] = useState([]);
   const [aiRecommendations, setAiRecommendations] = useState([]);
@@ -139,10 +148,19 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 🟢 判斷地點是否已在行程中
+  const checkIsAdded = useCallback((item) => {
+    const rawId = item.place_id || item.id;
+    const cleanId = rawId ? String(rawId).replace(/^(ai-|place-|sidebar-)/, '') : '';
+    return itinerary.some(i => {
+      const iId = i.place_id ? String(i.place_id).replace(/^(ai-|place-|sidebar-)/, '') : '';
+      return iId === cleanId;
+    });
+  }, [itinerary]);
+
   const isSearchMode = searchInput.trim().length > 0;
   const displayList = isSearchMode ? textSearchResults : aiRecommendations;
 
-  // 🟢 關鍵修復：加入 dummyDiv 確保 Service 永遠能初始化
   const runPlacesServiceRequest = useCallback((requestType, request) => {
     return new Promise((resolve, reject) => {
       if (!window.google || !window.google.maps.places || !window.google.maps.places.PlacesService) {
@@ -151,13 +169,11 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       let service;
       try {
         const serviceContainer = (mapInstance instanceof window.google.maps.Map) ? mapInstance : placesServiceRef.current;
-        
-        // 🟢 修正：若無容器，建立虛擬 div
         if (!serviceContainer) {
-            const dummyDiv = document.createElement('div');
-            service = new window.google.maps.places.PlacesService(dummyDiv);
+          const dummyDiv = document.createElement('div');
+          service = new window.google.maps.places.PlacesService(dummyDiv);
         } else {
-            service = new window.google.maps.places.PlacesService(serviceContainer);
+          service = new window.google.maps.places.PlacesService(serviceContainer);
         }
       } catch (e) {
         console.error("PlacesService init error:", e);
@@ -169,7 +185,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       else if (requestType === 'nearbySearch') handler = service.nearbySearch;
       else return reject(new Error("INVALID_REQUEST_TYPE"));
 
-      // 🟢 確保 handler 存在
       if (!handler) return reject(new Error("SERVICE_HANDLER_MISSING"));
 
       handler.call(service, request, (results, status) => {
@@ -242,12 +257,11 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       `;
 
       const rawResponse = await runGemini(prompt);
-      
-      // 🟢 檢查 AI 回應是否有效
+
       if (!rawResponse || rawResponse === "[]") {
-         console.warn("AI 回傳空結果");
-         if (!isLoadMore) setSearchError("AI_ERROR");
-         return;
+        console.warn("AI 回傳空結果");
+        if (!isLoadMore) setSearchError("AI_ERROR");
+        return;
       }
 
       const startIndex = rawResponse.indexOf('[');
@@ -320,7 +334,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       
       【地點清單】
       ${placesListStr}
-
+      
       【輸出規則】
       1. 請回傳純 JSON Array。
       2. 格式：[{"id": "對應的ID", "summary": "亮點 (12字內) | 預估價格"}]
@@ -331,8 +345,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
 
     try {
       const jsonStr = await runGemini(prompt);
-      
-      // 🟢 檢查 AI 回應
+
       if (!jsonStr || jsonStr === "[]") return;
 
       const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -585,6 +598,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                 handleAddToItinerary={handleAddToItinerary}
                 onPlaceSelect={onPlaceSelect}
                 isMobile={isMobile}
+                isInItinerary={checkIsAdded(item)}
               />
             ))}
 
@@ -613,7 +627,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
                 ) : (
                   <>
                     {aiRecommendations.length > 0 ? (
-                      aiRecommendations.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={false} isFav={myFavorites.some(f => f.id === item.id)} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} />)
+                      aiRecommendations.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={false} isFav={myFavorites.some(f => f.id === item.id)} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} isInItinerary={checkIsAdded(item)} />)
                     ) : (
                       !searchError && <div className="text-center py-10 text-gray-400 text-xs"> 暫無推薦資料 </div>
                     )}
@@ -628,7 +642,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
 
             {sidebarTab === 'favorites' && (
               <>
-                {myFavorites.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={true} isFav={true} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} />)}
+                {myFavorites.map(item => <DraggableSidebarItem key={item.id} item={item} isFavoriteView={true} isFav={true} toggleFavorite={toggleFavorite} handleAddToItinerary={handleAddToItinerary} onPlaceSelect={onPlaceSelect} isMobile={isMobile} isInItinerary={checkIsAdded(item)} />)}
                 {myFavorites.length === 0 && <div className="text-center py-10 text-gray-400 text-xs"><p> 還沒有收藏任何地點 </p></div>}
               </>
             )}

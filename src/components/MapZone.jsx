@@ -6,25 +6,15 @@ import { runGemini } from '../utils/gemini';
 const containerStyle = { width: '100%', height: '100%' };
 const DEFAULT_CENTER = { lat: 35.700, lng: 139.770 };
 
-const getFallbackLatLng = (pos) => {
-  const BASE_LAT = 35.71;
-  const BASE_LNG = 139.78;
-  const LAT_RANGE = 0.04;
-  const LNG_RANGE = 0.08;
-  const lat = BASE_LAT + (50 - pos.top) / 100 * LAT_RANGE;
-  const lng = BASE_LNG + (pos.left - 50) / 100 * LNG_RANGE;
-  return { lat, lng };
-};
-
 export default function MapZone({
   sidebarTab, itinerary, handleAddToItinerary, isMapScriptLoaded,
   setMapInstance, setMapCenter, mapCenter,
   selectedPlace, onMapPoiClick, setMapBounds,
   onPlaceSelect,
   myFavorites = [],
-  toggleFavorite = () => {},
+  toggleFavorite = () => { },
   activeDay,
-  currentTrip // 🟢 接收 currentTrip
+  currentTrip
 }) {
   const mapRef = useRef(null);
   const [poiInfo, setPoiInfo] = useState(null);
@@ -42,7 +32,6 @@ export default function MapZone({
   }, [onPlaceSelect, handleAddToItinerary, itinerary]);
 
   const [resolvedLocations, setResolvedLocations] = useState([]);
-  const [mapError, setMapError] = useState(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const initialCenter = (mapCenter && mapCenter.lat) ? mapCenter : DEFAULT_CENTER;
   const [centerState, setCenterState] = useState(initialCenter);
@@ -158,32 +147,29 @@ export default function MapZone({
     if (setMapInstance) setMapInstance(null);
   }, [setMapInstance]);
 
-  // 🟢 修正：增加 context 參數來限縮搜尋範圍
   const geocodePlace = useCallback((query, context, map) => {
     return new Promise((resolve, reject) => {
       if (!map || !window.google || !window.google.maps.Geocoder) return reject(new Error("Service unavailable"));
       const geocoder = new window.google.maps.Geocoder();
-      // 組合搜尋關鍵字：目的地 + 景點名稱
       const searchQuery = context ? `${context} ${query}` : query;
-      
+
       geocoder.geocode({ address: searchQuery }, (results, status) => {
         if (status === 'OK' && results[0]) {
           const loc = results[0].geometry.location;
           resolve({ lat: loc.lat(), lng: loc.lng(), name: query });
         } else {
-           // Fallback: 如果組合搜尋失敗，嘗試只搜原名
-           if (context) {
-             geocoder.geocode({ address: query }, (res2, stat2) => {
-                if (stat2 === 'OK' && res2[0]) {
-                    const loc = res2[0].geometry.location;
-                    resolve({ lat: loc.lat(), lng: loc.lng(), name: query });
-                } else {
-                    reject(new Error("Not found"));
-                }
-             });
-           } else {
-             reject(new Error("Not found"));
-           }
+          if (context) {
+            geocoder.geocode({ address: query }, (res2, stat2) => {
+              if (stat2 === 'OK' && res2[0]) {
+                const loc = res2[0].geometry.location;
+                resolve({ lat: loc.lat(), lng: loc.lng(), name: query });
+              } else {
+                reject(new Error("Not found"));
+              }
+            });
+          } else {
+            reject(new Error("Not found"));
+          }
         }
       });
     });
@@ -192,13 +178,10 @@ export default function MapZone({
   useEffect(() => {
     if (!isMapScriptLoaded || !mapRef.current) return;
     const itemsToGeocode = itinerary.filter(item => item.type !== 'connection' && (!item.lat || !item.lng));
-    
-    // 🟢 取得目的地 Context
     const destinationContext = currentTrip?.destination || "";
 
     Promise.all(itemsToGeocode.map(async (item) => {
       try {
-        // 🟢 傳入 destinationContext
         const { lat, lng } = await geocodePlace(item.name, destinationContext, mapRef.current);
         return { ...item, lat, lng };
       } catch (e) { return item; }
@@ -288,18 +271,32 @@ export default function MapZone({
     itineraryPins.forEach((item, idx) => {
       const position = { lat: item.lat, lng: item.lng };
       path.push(position);
-      let iconColor = '#0d9488';
-      if (item.type === 'food') iconColor = '#f97316';
-      if (item.type === 'hotel') iconColor = '#4f46e5';
+      
+      // 🟢 需求 3：根據來源設定顏色 (AI=紫色, Manual=深青色)
+      const isAi = item.source === 'ai' || (item.id && item.id.startsWith('ai-'));
+      let fillColor = isAi ? '#9333ea' : '#0f766e'; 
 
       elements.push({
         type: 'itinerary',
         id: item.id,
         position: position,
-        iconColor: iconColor,
-        label: (idx + 1).toString(),
+        // 🟢 需求 3：加大尺寸，設為實心，顯示順序數字
+        icon: {
+           path: window.google.maps.SymbolPath.CIRCLE,
+           fillColor: fillColor,
+           fillOpacity: 1,
+           strokeWeight: 3,
+           strokeColor: '#ffffff',
+           scale: 12
+        },
+        label: { 
+            text: (idx + 1).toString(), 
+            color: 'white', 
+            fontSize: '14px', 
+            fontWeight: 'bold' 
+        },
         title: item.name,
-        zIndex: 2,
+        zIndex: 100 + idx,
         onClick: () => {
           let rawId = item.place_id || item.id;
           if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
@@ -320,7 +317,17 @@ export default function MapZone({
       if (!itineraryPins.some(p => p.id === selectedPlace.id)) {
         elements.push({
           type: 'selected', id: selectedPlace.id, position: { lat: selectedPlace.lat, lng: selectedPlace.lng },
-          iconColor: '#a855f7', label: null, title: selectedPlace.name, zIndex: 3,
+          // 選取點的樣式
+          icon: {
+              path: window.google.maps.SymbolPath.CIRCLE,
+              fillColor: '#ec4899', // Pink
+              fillOpacity: 1,
+              strokeWeight: 2,
+              strokeColor: '#ffffff',
+              scale: 12
+          },
+          label: null, 
+          title: selectedPlace.name, zIndex: 200,
           onClick: () => handleAddToItinerary({ ...selectedPlace, type: 'spot', pos: { lat: selectedPlace.lat, lng: selectedPlace.lng } })
         });
       }
@@ -348,9 +355,9 @@ export default function MapZone({
             <GoogleMap mapContainerStyle={containerStyle} center={centerState} zoom={zoomState} onLoad={onLoad} onUnmount={onUnmount} options={{ disableDefaultUI: true, zoomControl: true, clickableIcons: true }}>
               {pathCoordinates.length > 1 && <Polyline key={`poly-${activeDay}-${polylineKey}`} path={pathCoordinates} options={{ strokeColor: '#0d9488', strokeOpacity: 0.8, strokeWeight: 2 }} />}
               {mapElements.map((e, i) => (
-                <Marker key={`${e.id}-${activeDay}`} position={e.position} title={e.title} zIndex={e.zIndex} onClick={e.onClick} icon={{ path: window.google.maps.SymbolPath.CIRCLE, fillColor: e.iconColor, fillOpacity: 1, strokeWeight: 2, strokeColor: '#fff', scale: e.type === 'selected' ?
-                  10 : 8 }} label={e.label ?
-                  { text: e.label, color: 'white', fontSize: '12px', fontWeight: 'bold' } : undefined} />
+                <Marker key={`${e.id}-${activeDay}`} position={e.position} title={e.title} zIndex={e.zIndex} onClick={e.onClick} 
+                  icon={e.icon} label={e.label} 
+                />
               ))}
               {poiInfo && (
                 <InfoWindow position={poiInfo.position} onCloseClick={() => setPoiInfo(null)} options={{ pixelOffset: new window.google.maps.Size(0, -20) }}>
