@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Map, Search, Sparkles, Heart, Plus, Loader2, DollarSign, Clock, Navigation, AlertTriangle,
   ChevronLeft, Camera, ShoppingBag, Bed, Activity, Utensils,
-  Beer, Mountain, X, Car, Coffee // 🟢 新增 Car 與 Coffee Icon
+  Beer, Mountain, X, Car, Coffee
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { IconByType } from '../icons/IconByType';
@@ -10,17 +10,16 @@ import { runGemini } from '../utils/gemini';
 
 const PLACEHOLDER_IMAGE_URL = "https://placehold.co/64x64?text=No+Image";
 
-// 🟢 修改 Filter 設定：將「寺廟」改為「咖啡」，「車站」改為「租車」
 const CATEGORY_FILTERS = [
   { id: 'all', label: '綜合', icon: Sparkles },
   { id: 'spot', label: '景點', icon: Camera },
   { id: 'food', label: '美食', icon: Utensils },
   { id: 'shopping', label: '購物', icon: ShoppingBag },
-  { id: 'coffee', label: '咖啡', icon: Coffee }, // ✨ New
+  { id: 'coffee', label: '咖啡', icon: Coffee },
   { id: 'massage', label: '按摩', icon: Activity },
   { id: 'hotel', label: '住宿', icon: Bed },
   { id: 'bar', label: '酒吧', icon: Beer },
-  { id: 'rent', label: '租車', icon: Car },      // ✨ New
+  { id: 'rent', label: '租車', icon: Car },
   { id: 'nature', label: '自然', icon: Mountain },
 ];
 
@@ -77,7 +76,6 @@ const DraggableSidebarItem = ({ item, isFavoriteView, isFav, toggleFavorite, han
           </div>
         </div>
 
-        {/* AI 智慧摘要顯示區 */}
         {item.aiSummary ? (
           <div className="mt-1.5 bg-purple-50 border border-purple-100 rounded px-2 py-1 text-[10px] text-purple-700 leading-tight flex items-start gap-1 animate-in fade-in">
             <Sparkles size={10} className="shrink-0 mt-0.5 fill-purple-200" />
@@ -144,6 +142,7 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
   const isSearchMode = searchInput.trim().length > 0;
   const displayList = isSearchMode ? textSearchResults : aiRecommendations;
 
+  // 🟢 關鍵修復：加入 dummyDiv 確保 Service 永遠能初始化
   const runPlacesServiceRequest = useCallback((requestType, request) => {
     return new Promise((resolve, reject) => {
       if (!window.google || !window.google.maps.places || !window.google.maps.places.PlacesService) {
@@ -152,7 +151,14 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       let service;
       try {
         const serviceContainer = (mapInstance instanceof window.google.maps.Map) ? mapInstance : placesServiceRef.current;
-        service = new window.google.maps.places.PlacesService(serviceContainer);
+        
+        // 🟢 修正：若無容器，建立虛擬 div
+        if (!serviceContainer) {
+            const dummyDiv = document.createElement('div');
+            service = new window.google.maps.places.PlacesService(dummyDiv);
+        } else {
+            service = new window.google.maps.places.PlacesService(serviceContainer);
+        }
       } catch (e) {
         console.error("PlacesService init error:", e);
         return reject(new Error("SERVICE_INIT_FAIL"));
@@ -162,6 +168,9 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       else if (requestType === 'findPlaceFromQuery') handler = service.findPlaceFromQuery;
       else if (requestType === 'nearbySearch') handler = service.nearbySearch;
       else return reject(new Error("INVALID_REQUEST_TYPE"));
+
+      // 🟢 確保 handler 存在
+      if (!handler) return reject(new Error("SERVICE_HANDLER_MISSING"));
 
       handler.call(service, request, (results, status) => {
         if (status === window.google.maps.places.PlacesServiceStatus.OK || status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
@@ -210,7 +219,6 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
         setCurrentCityName(cityName);
       }
 
-      // 🟢 根據 Filter 設定 AI Prompt
       let typePrompt = "熱門旅遊景點、必吃餐廳或特色商家";
       if (filterType === 'food') typePrompt = "必吃美食、在地小吃、熱門餐廳";
       if (filterType === 'spot') typePrompt = "熱門旅遊景點、打卡地標、歷史古蹟";
@@ -218,8 +226,8 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       if (filterType === 'massage') typePrompt = "評價好的按摩店、SPA、放鬆場所";
       if (filterType === 'hotel') typePrompt = "特色住宿、熱門飯店";
       if (filterType === 'bar') typePrompt = "熱門酒吧、夜店、居酒屋、特色調酒";
-      if (filterType === 'coffee') typePrompt = "特色咖啡廳、必喝手沖、網美下午茶、甜點店"; // ✨ New
-      if (filterType === 'rent') typePrompt = "租車公司、機車租借、自行車租借服務"; // ✨ New
+      if (filterType === 'coffee') typePrompt = "特色咖啡廳、必喝手沖、網美下午茶、甜點店";
+      if (filterType === 'rent') typePrompt = "租車公司、機車租借、自行車租借服務";
       if (filterType === 'nature') typePrompt = "自然景觀、公園、登山步道、海灘";
 
       const existingNames = isLoadMore ? aiRecommendations.map(i => i.name).join('、') : "";
@@ -234,6 +242,14 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
       `;
 
       const rawResponse = await runGemini(prompt);
+      
+      // 🟢 檢查 AI 回應是否有效
+      if (!rawResponse || rawResponse === "[]") {
+         console.warn("AI 回傳空結果");
+         if (!isLoadMore) setSearchError("AI_ERROR");
+         return;
+      }
+
       const startIndex = rawResponse.indexOf('[');
       const endIndex = rawResponse.lastIndexOf(']');
       if (startIndex === -1 || endIndex === -1) throw new Error("JSON Parse Error");
@@ -315,6 +331,10 @@ export default function Sidebar({ sidebarTab, setSidebarTab, myFavorites, toggle
 
     try {
       const jsonStr = await runGemini(prompt);
+      
+      // 🟢 檢查 AI 回應
+      if (!jsonStr || jsonStr === "[]") return;
+
       const cleanJson = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
       const summaryData = JSON.parse(cleanJson);
 

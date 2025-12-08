@@ -451,6 +451,8 @@ const EditorPage = ({ isLoaded, user }) => {
                 onOpenShare={() => setShowShareModal(true)}
                 // 🟢 恢復：直接打開匯出 Modal
                 onOpenExport={() => setIsExportModalOpen(true)}
+                myFavorites={myFavorites}
+                toggleFavorite={toggleFavorite}
               />
               <div className="h-24 md:hidden shrink-0"></div>
             </div>

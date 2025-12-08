@@ -2,14 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Clock, MapPin, Trash2, GripVertical, DollarSign,
   Share2, Sparkles, ChevronLeft, ChevronRight, Save, Edit3, X,
-  Loader2, Star, ExternalLink, Globe, CalendarCheck, Ticket, Download
+  Loader2, Star, ExternalLink, Globe, CalendarCheck, Ticket, Download,
+  User, Heart // 🟢 新增 User 與 Heart icon
 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { IconByType } from '../icons/IconByType';
-// 🟢 引入 Analytics 與 Auth
-import { logEvent } from '../utils/logger'; // 請確認檔名是 logger.js
+import { logEvent } from '../utils/logger';
 import { auth } from '../utils/firebase';
 
 // --- Affiliate Configuration ---
@@ -17,11 +17,8 @@ const AGODA_CID = "1427616";
 const AGODA_TAG = "57450_2f19af64ff8c6";
 const KLOOK_AID = "api%7C701%7C57144de842062be037049d9828200a9f%7Cpid%7C101701";
 
-// 🟢 新增：行程 Context 處理函式 (含防呆)
 const getTripContext = (trip) => {
   if (!trip) {
-    // 開發模式下印出警告，方便除錯
-    if (import.meta.env.DEV) console.warn("⚠️ getTripContext: trip is null");
     return {
       destination: "Unknown",
       purpose: "Unknown",
@@ -31,21 +28,18 @@ const getTripContext = (trip) => {
     };
   }
   
-  // 建議加入此行 Log 來確認實際資料結構 (Debug 用)
   if (import.meta.env.DEV) {
     console.log("Current Trip Data for Context:", trip);
   }
 
-  // 處理 Moods (可能是陣列，也可能不存在)
   let moodsStr = "";
-  const rawMoods = trip.moods || trip.selectedMoods; // 嘗試兩種命名
+  const rawMoods = trip.moods || trip.selectedMoods;
   if (Array.isArray(rawMoods)) {
     moodsStr = rawMoods.join(',');
   } else if (typeof rawMoods === 'string') {
     moodsStr = rawMoods;
   }
 
-  // 處理 Styles
   let stylesStr = "";
   const rawStyles = trip.styles || trip.selectedStyles;
   if (Array.isArray(rawStyles)) {
@@ -56,7 +50,6 @@ const getTripContext = (trip) => {
 
   return {
     destination: trip.destination || "Unknown",
-    // 嘗試讀取 purpose 或 selectedPurpose，若無則回傳 Unknown
     purpose: trip.purpose || trip.selectedPurpose || "Unknown", 
     moods: moodsStr,
     styles: stylesStr,
@@ -137,8 +130,8 @@ const DurationPickerPopover = ({ onSave, onClose }) => {
   );
 };
 
-// 🟢 SortableTripItem 接收 tripContext 以豐富埋點資訊
-const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, isGenerating, tripId, tripContext }) => {
+// 🟢 SortableTripItem: 接收 myFavorites 與 toggleFavorite
+const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, isGenerating, tripId, tripContext, myFavorites, toggleFavorite }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, data: { item } });
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showDurationPicker, setShowDurationPicker] = useState(false);
@@ -155,6 +148,11 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
   const googleMapsUrl = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}&query_place_id=${item.place_id || ''}`;
   const affiliate = getAffiliateLink(item);
 
+  // 🟢 判斷是否為 AI 推薦
+  const isAiRecommendation = item.source === 'ai';
+  // 🟢 判斷是否已收藏 (比對 place_id)
+  const isFav = myFavorites?.some(f => f.id === item.place_id || f.id === `place-${item.place_id}` || f.id === item.id);
+
   const handleTimeSave = (newTime) => {
     onUpdateItem(item.id, { startTime: newTime });
     setShowTimePicker(false);
@@ -165,39 +163,48 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
     setShowDurationPicker(false);
   };
 
-  // 🟢 導購點擊埋點 (加入 Context)
   const handleAffiliateClick = (e, linkUrl, label) => {
     e.stopPropagation();
     logEvent('click_affiliate', tripId, auth.currentUser?.uid, {
         itemId: item.id,
         itemName: item.name,
-        // 🟢 補上 itemType
         itemType: item.type || 'unknown',
         affiliateType: label,
         url: linkUrl,
-        // 🟢 展開 Context 資訊
         ...tripContext
     });
   };
 
-  // 🟢 刪除事件埋點 (移至這裡觸發，確保資料完整)
   const handleDeleteClick = (e) => {
     e.stopPropagation();
-    
     logEvent('delete_item', tripId, auth.currentUser?.uid, {
         itemId: item.id,
         itemName: item.name,
-        // 🟢 確保 itemType 正確傳入
         itemType: item.type || 'unknown',
         aiSummary: item.aiSummary || '',
-        // 🟢 修正：如果 source 為空，預設為 'manual'
         source: item.source || 'manual', 
-        // 🟢 展開 Context 資訊
         ...tripContext
     });
-
-    // 執行實際刪除
     onRemove(item.id);
+  };
+
+  // 🟢 處理收藏點擊
+  const handleHeartClick = (e) => {
+    e.stopPropagation();
+    // 建構一個符合 toggleFavorite 需要的物件格式
+    const favItem = {
+      id: item.place_id || item.id, // 確保 ID 正確
+      place_id: item.place_id,
+      name: item.name,
+      type: item.type,
+      image: item.image,
+      rating: item.rating,
+      priceLevel: item.price_level,
+      url: googleMapsUrl,
+      lat: item.lat,
+      lng: item.lng
+    };
+    toggleFavorite(favItem);
   };
 
   return (
@@ -230,9 +237,16 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
           <div className="flex justify-between items-start gap-2">
             <div className="flex flex-col gap-1 w-full">
               <h4 className="font-bold text-gray-800 text-base line-clamp-1">{item.name}</h4>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex items-center gap-2 text-xs flex-wrap">
                 {item.rating > 0 && <span className="flex items-center text-orange-500 font-bold bg-orange-50 px-1.5 py-0.5 rounded-md">{item.rating} <Star size={10} fill="currentColor" className="ml-0.5" /></span>}
                 {item.price_level > 0 && <span className="text-gray-500 font-medium">{[...Array(item.price_level)].map((_, i) => <span key={i} className="text-gray-800">$</span>)}</span>}
+                
+                {/* 🟢 來源標籤：顯示 AI 推薦或自選 */}
+                <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium ${isAiRecommendation ? 
+                  'bg-purple-50 text-purple-700 border-purple-100' : 'bg-gray-50 text-gray-600 border-gray-100'}`}>
+                  {isAiRecommendation ? <Sparkles size={10} /> : <User size={10} />}
+                  {isAiRecommendation ? 'AI 推薦' : '自選'}
+                </span>
               </div>
             </div>
             <button {...attributes} {...listeners} className="text-gray-300 hover:text-gray-600 p-1 cursor-grab active:cursor-grabbing"><GripVertical size={16} /></button>
@@ -284,10 +298,16 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                     </>
                   )}
                 </div>
-                {/* 🟢 修改刪除按鈕：綁定 handleDeleteClick */}
-                <button onClick={handleDeleteClick} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
-                  <Trash2 size={16} />
-                </button>
+                
+                <div className="flex items-center gap-1">
+                  {/* 🟢 Mobile 版：新增收藏按鈕 */}
+                  <button onClick={handleHeartClick} className={`p-2 rounded-full transition-colors ${isFav ? 'text-orange-500 bg-orange-50' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-50'}`}>
+                    <Heart size={16} fill={isFav ? "currentColor" : "none"} />
+                  </button>
+                  <button onClick={handleDeleteClick} className="text-gray-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -325,8 +345,13 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
                   </a>
                 ) : null}
                 <a href={googleMapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-gray-400 hover:text-blue-600 flex items-center gap-1 text-[10px] bg-gray-50 px-2 py-1 rounded hover:bg-blue-50 transition-colors border border-gray-100" title="在 Google 地圖查看評論"><MapPin size={12} /> 地圖/評論 </a>
-                {/* 🟢 修改刪除按鈕：綁定 handleDeleteClick */}
-                <button onClick={handleDeleteClick} className="text-gray-300 hover:text-red-500 p-1 ml-1 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+                
+                {/* 🟢 Desktop 版：新增收藏按鈕 */}
+                <button onClick={handleHeartClick} className={`p-1 ml-1 rounded transition-colors ${isFav ? 'text-orange-500 bg-orange-50' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-50'}`} title={isFav ? "取消收藏" : "加入收藏"}>
+                  <Heart size={14} fill={isFav ? "currentColor" : "none"} />
+                </button>
+
+                <button onClick={handleDeleteClick} className="text-gray-300 hover:text-red-500 p-1 rounded transition-colors"><Trash2 size={14} /></button>
               </div>
             </div>
 
@@ -337,40 +362,13 @@ const SortableTripItem = ({ item, index, onRemove, onPlaceSelect, onUpdateItem, 
   );
 };
 
-const DateEditor = ({ startDate, endDate, onSave, onCancel, isSaving }) => {
-  const [start, setStart] = useState(startDate || '');
-  const [end, setEnd] = useState(endDate || '');
-  return (
-    <div className="absolute top-12 left-0 bg-white p-4 rounded-xl shadow-xl border border-gray-200 z-50 w-72 animate-in fade-in zoom-in">
-      <h4 className="font-bold text-gray-800 mb-3 text-sm"> 修改旅遊日期 </h4>
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <label className="text-xs text-gray-500"> 開始日期 </label>
-          <input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full text-sm border p-2 rounded-lg outline-none focus:border-teal-500" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs text-gray-500"> 結束日期 </label>
-          <input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full text-sm border p-2 rounded-lg outline-none focus:border-teal-500" />
-        </div>
-      </div>
-      <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
-        <button onClick={onCancel} disabled={isSaving} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"><X size={16} /></button>
-        <button onClick={() => onSave(start, end)} disabled={isSaving || !start ||
-          !end} className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-          {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          {isSaving ? '儲存中...' : '儲存'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpdateTrip, itinerary, isGenerating, aiStatus, setIsAIModalOpen, handleRemoveFromItinerary, onPlaceSelect, onBack, handleUpdateItem, onOpenShare, onOpenExport }) {
+// 🟢 Canvas: 接收 myFavorites 與 toggleFavorite
+export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpdateTrip, itinerary, isGenerating, aiStatus, setIsAIModalOpen, handleRemoveFromItinerary, onPlaceSelect, onBack, handleUpdateItem, onOpenShare, onOpenExport, myFavorites, toggleFavorite }) {
   const { setNodeRef } = useDroppable({ id: 'canvas-drop-zone' });
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [isSavingDate, setIsSavingDate] = useState(false);
 
-  // 🟢 2. 使用 useMemo 計算 TripContext
+  // 2. 使用 useMemo 計算 TripContext
   const tripContext = useMemo(() => getTripContext(currentTrip), [currentTrip]);
 
   const { totalDays, currentDateDisplay } = useMemo(() => {
@@ -484,6 +482,9 @@ export default function Canvas({ activeDay, setActiveDay, currentTrip, handleUpd
                   tripId={currentTrip?.id}
                   // 🟢 傳入 TripContext
                   tripContext={tripContext}
+                  // 🟢 傳入收藏功能
+                  myFavorites={myFavorites}
+                  toggleFavorite={toggleFavorite}
                 />
               ))}
             </div>
