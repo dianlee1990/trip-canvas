@@ -110,6 +110,7 @@ export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoa
   }, [isOpen]);
 
   // 🟢 2. 匯出邏輯 (新版流程)
+  // 🟢 2. 匯出邏輯 (修正日期格式版)
   const handleExportToGoogleCalendar = async () => {
     if (!isApiReady) {
       alert("Google 服務初始化中，請稍候...");
@@ -122,85 +123,127 @@ export default function ExportModal({ isOpen, onClose, trip, itinerary, isMapLoa
 
     setIsExporting(true);
 
-    // 定義匯出執行的核心函式 (在取得 Token 後執行)
     const executeExport = async () => {
       try {
-        const batch = window.gapi.client.newBatch();
-        let eventCount = 0;
-        const tripStartDate = new Date(trip.startDate);
-
-        if (isNaN(tripStartDate.getTime())) {
-          throw new Error("行程日期無效");
+        console.log("🚀 開始準備資料...");
+        
+        // 1. 嚴格檢查開始日期
+        if (!trip.startDate) {
+          throw new Error("缺少旅遊開始日期 (trip.startDate)");
+        }
+        
+        // 嘗試修正日期格式 (將 / 取代為 -)
+        const cleanStartDate = new Date(trip.startDate);
+        
+        if (isNaN(cleanStartDate.getTime())) {
+          throw new Error(`無效的開始日期格式: ${trip.startDate}`);
         }
 
-        itinerary.forEach((item) => {
-          if (!item.day || !item.time) return;
+        console.log("✅ 旅遊開始日期:", cleanStartDate.toISOString());
 
-          // 計算日期
-          const itemDate = new Date(tripStartDate);
-          itemDate.setDate(tripStartDate.getDate() + (parseInt(item.day) - 1));
-          const dateStr = itemDate.toISOString().split('T')[0];
-          
-          // 計算時間
-          const startDateTimeStr = `${dateStr}T${item.time}:00`; 
-          const startObj = new Date(startDateTimeStr);
-          const duration = Number(item.duration || item.suggestedDuration || 60);
-          const endObj = new Date(startObj.getTime() + duration * 60000);
+        const batch = window.gapi.client.newBatch();
+        let validEventCount = 0;
 
-          const eventResource = {
-            'summary': `[TripCanvas] ${item.name}`,
-            'location': item.name,
-            'description': `${item.aiSummary || '無摘要'}\n標籤: ${item.tags?.join(', ') || ''}`,
-            'start': {
-              'dateTime': startObj.toISOString(),
-              'timeZone': 'Asia/Taipei'
-            },
-            'end': {
-              'dateTime': endObj.toISOString(),
-              'timeZone': 'Asia/Taipei'
+        itinerary.forEach((item, index) => {
+          // 跳過沒有設定時間的行程
+          if (!item.day || !item.time) {
+            console.warn(`跳過第 ${index + 1} 個行程 (${item.name})：未設定天數或時間`);
+            return;
+          }
+
+          try {
+            // A. 計算當天日期
+            const itemDate = new Date(cleanStartDate);
+            itemDate.setDate(cleanStartDate.getDate() + (parseInt(item.day) - 1));
+            
+            // B. 組合完整的 ISO 時間字串
+            // 格式：YYYY-MM-DDTHH:mm:00
+            const year = itemDate.getFullYear();
+            const month = String(itemDate.getMonth() + 1).padStart(2, '0');
+            const day = String(itemDate.getDate()).padStart(2, '0');
+            const timeStr = `${year}-${month}-${day}T${item.time}:00`;
+
+            const startObj = new Date(timeStr);
+            
+            // C. 計算結束時間
+            const duration = Number(item.duration || item.suggestedDuration || 60);
+            const endObj = new Date(startObj.getTime() + duration * 60000);
+
+            // D. 再次檢查時間是否有效
+            if (isNaN(startObj.getTime()) || isNaN(endObj.getTime())) {
+              console.error(`時間計算錯誤: ${item.name}`, timeStr);
+              return;
             }
-          };
 
-          const request = window.gapi.client.calendar.events.insert({
-            'calendarId': 'primary',
-            'resource': eventResource
-          });
-          batch.add(request);
-          eventCount++;
+            // E. 建立請求物件
+            const eventResource = {
+              'summary': `[TripCanvas] ${item.name}`,
+              'location': item.name || '',
+              'description': `${item.aiSummary || '無摘要'}\n標籤: ${item.tags?.join(', ') || ''}`,
+              'start': {
+                'dateTime': startObj.toISOString(), // 例如: 2025-12-08T10:00:00.000Z
+                // 'timeZone': 'Asia/Taipei' // 建議先註解掉 TimeZone，讓 ISO String 自己帶時區資訊，減少衝突
+              },
+              'end': {
+                'dateTime': endObj.toISOString(),
+              }
+            };
+
+            const request = window.gapi.client.calendar.events.insert({
+              'calendarId': 'primary',
+              'resource': eventResource
+            });
+            
+            batch.add(request);
+            validEventCount++;
+
+          } catch (err) {
+            console.error(`處理行程 "${item.name}" 時發生錯誤:`, err);
+          }
         });
 
-        if (eventCount > 0) {
-          const response = await batch.then();
-          console.log("Batch Result:", response);
-          alert(`🎉 成功匯出 ${eventCount} 個行程到您的 Google 日曆！`);
+        if (validEventCount === 0) {
+          alert("沒有可匯出的有效行程 (請檢查是否設定了具體時間)");
+          return;
+        }
+
+        console.log(`📡 送出 ${validEventCount} 筆請求給 Google...`);
+        
+        // 傳送請求
+        const response = await batch.then();
+        console.log("Batch Response Raw:", response);
+
+        // 檢查結果
+        const resultValues = Object.values(response.result);
+        const errors = resultValues.filter(res => res.status >= 400); // 抓出所有 4xx 或 5xx 的錯誤
+
+        if (errors.length > 0) {
+          console.error("❌ Google 回傳錯誤:", errors);
+          // 把第一個錯誤訊息印出來給你看
+          const firstErrorMsg = errors[0].result?.error?.message || "未知錯誤";
+          alert(`⚠️ 部分行程匯出失敗！\n錯誤原因: ${firstErrorMsg}\n請查看 Console 了解詳情。`);
         } else {
-          alert("沒有設定具體時間的行程，無法匯出。");
+          alert(`🎉 太棒了！成功匯出 ${validEventCount} 個行程到您的 Google 日曆！`);
         }
 
       } catch (error) {
-        console.error("Export Execution Error:", error);
-        alert(`匯出過程發生錯誤: ${error.message}`);
+        console.error("Export Critical Error:", error);
+        alert(`匯出失敗: ${error.message}`);
       } finally {
         setIsExporting(false);
       }
     };
 
-    // 🟢 觸發登入/授權流程
-    // 每次請求都檢查 Token，如果過期或不存在，GIS 會自動彈窗
     tokenClient.current.callback = async (resp) => {
       if (resp.error !== undefined) {
         throw (resp);
       }
-      // 授權成功，執行匯出
       await executeExport();
     };
 
-    // 檢查是否有足夠權限，如果沒有就請求
     if (window.gapi.client.getToken() === null) {
-      // 請求授權 (觸發彈窗)
       tokenClient.current.requestAccessToken({prompt: 'consent'});
     } else {
-      // 已經有 Token，直接執行
       tokenClient.current.requestAccessToken({prompt: ''});
     }
   };
