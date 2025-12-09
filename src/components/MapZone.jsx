@@ -1,7 +1,6 @@
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
-// 🟢 修正：補上 Sparkles, Wallet, AlertTriangle, MapPin, DollarSign 等所有用到的 Icon
 import { Wallet, Loader2, AlertTriangle, Star, Plus, Heart, Search, MapPin, Sparkles, Clock, DollarSign } from 'lucide-react';
-import { GoogleMap, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
+import { GoogleMap, Marker, InfoWindow } from '@react-google-maps/api'; // 移除 Polyline 元件引入
 import { runGemini } from '../utils/gemini';
 
 const containerStyle = { width: '100%', height: '100%' };
@@ -18,6 +17,9 @@ export default function MapZone({
   currentTrip
 }) {
   const mapRef = useRef(null);
+  // 🟢 新增：用來直接控制線段的 Ref
+  const polylineRef = useRef(null);
+  
   const [poiInfo, setPoiInfo] = useState(null);
   const [showSearchButton, setShowSearchButton] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -32,7 +34,7 @@ export default function MapZone({
     itineraryRef.current = itinerary;
   }, [onPlaceSelect, handleAddToItinerary, itinerary]);
 
-  const [resolvedLocations, setResolvedLocations] = useState([]);
+  const [coordinateCache, setCoordinateCache] = useState({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const initialCenter = (mapCenter && mapCenter.lat) ? mapCenter : DEFAULT_CENTER;
   const [centerState, setCenterState] = useState(initialCenter);
@@ -144,6 +146,11 @@ export default function MapZone({
 
   const onUnmount = useCallback(() => {
     if (mapRef.current) window.google.maps.event.clearInstanceListeners(mapRef.current);
+    // 🟢 清理線段
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
     mapRef.current = null;
     if (setMapInstance) setMapInstance(null);
   }, [setMapInstance]);
@@ -157,13 +164,13 @@ export default function MapZone({
       geocoder.geocode({ address: searchQuery }, (results, status) => {
         if (status === 'OK' && results[0]) {
           const loc = results[0].geometry.location;
-          resolve({ lat: loc.lat(), lng: loc.lng(), name: query });
+          resolve({ lat: loc.lat(), lng: loc.lng() });
         } else {
           if (context) {
             geocoder.geocode({ address: query }, (res2, stat2) => {
               if (stat2 === 'OK' && res2[0]) {
                 const loc = res2[0].geometry.location;
-                resolve({ lat: loc.lat(), lng: loc.lng(), name: query });
+                resolve({ lat: loc.lat(), lng: loc.lng() });
               } else {
                 reject(new Error("Not found"));
               }
@@ -178,31 +185,42 @@ export default function MapZone({
 
   useEffect(() => {
     if (!isMapScriptLoaded || !mapRef.current) return;
-    const itemsToGeocode = itinerary.filter(item => item.type !== 'connection' && (!item.lat || !item.lng));
+    const itemsToGeocode = itinerary.filter(item => item.type !== 'connection' && (!item.lat || !item.lng) && !coordinateCache[item.id]);
     const destinationContext = currentTrip?.destination || "";
 
-    Promise.all(itemsToGeocode.map(async (item) => {
-      try {
-        const { lat, lng } = await geocodePlace(item.name, destinationContext, mapRef.current);
-        return { ...item, lat, lng };
-      } catch (e) { return item; }
-    })).then(newLocations => {
-      const newResolvedMap = new Map();
-      newLocations.filter(item => item.lat).forEach(item => newResolvedMap.set(item.id, item));
-      itinerary.filter(item => item.type !== 'connection' && item.lat).forEach(item => newResolvedMap.set(item.id, item));
-      setResolvedLocations(Array.from(newResolvedMap.values()));
-    });
-  }, [itinerary, isMapScriptLoaded, geocodePlace, currentTrip]);
+    if (itemsToGeocode.length > 0) {
+      Promise.all(itemsToGeocode.map(async (item) => {
+        try {
+          const coords = await geocodePlace(item.name, destinationContext, mapRef.current);
+          return { id: item.id, ...coords };
+        } catch (e) { return null; }
+      })).then(results => {
+        const updates = {};
+        results.forEach(res => {
+          if (res) updates[res.id] = { lat: res.lat, lng: res.lng };
+        });
+        if (Object.keys(updates).length > 0) {
+          setCoordinateCache(prev => ({ ...prev, ...updates }));
+        }
+      });
+    }
+  }, [itinerary, isMapScriptLoaded, geocodePlace, currentTrip, coordinateCache]);
 
   useEffect(() => {
-    if (!mapRef.current || resolvedLocations.length === 0) return;
-    const dayLocations = resolvedLocations.filter(item => {
-      const itemDay = Number(item.day || 1);
-      return item.lat && item.lng && itemDay === activeDay;
-    });
-    if (dayLocations.length > 0) {
+    if (!mapRef.current || itinerary.length === 0) return;
+    
+    const activePoints = itinerary
+      .filter(item => Number(item.day || 1) === activeDay)
+      .map(item => {
+        const lat = item.lat || coordinateCache[item.id]?.lat;
+        const lng = item.lng || coordinateCache[item.id]?.lng;
+        return { lat, lng };
+      })
+      .filter(p => p.lat && p.lng);
+
+    if (activePoints.length > 0 && isInitialLoad) {
       const bounds = new window.google.maps.LatLngBounds();
-      dayLocations.forEach(item => bounds.extend(new window.google.maps.LatLng(item.lat, item.lng)));
+      activePoints.forEach(p => bounds.extend(new window.google.maps.LatLng(p.lat, p.lng)));
       if (!bounds.isEmpty()) {
         mapRef.current.fitBounds(bounds);
         const listener = window.google.maps.event.addListenerOnce(mapRef.current, "idle", () => {
@@ -212,7 +230,7 @@ export default function MapZone({
         setShowSearchButton(false);
       }
     }
-  }, [resolvedLocations, isInitialLoad, activeDay]);
+  }, [itinerary, isInitialLoad, activeDay, coordinateCache]);
 
   useEffect(() => {
     if (!selectedPlace || !selectedPlace.lat || !selectedPlace.lng) return;
@@ -224,9 +242,8 @@ export default function MapZone({
     let rawPlaceId = selectedPlace.place_id || placeId;
     if (typeof rawPlaceId === 'string') rawPlaceId = rawPlaceId.replace(/^(ai-|place-|sidebar-)/, '');
     const isTempId = rawPlaceId && (rawPlaceId.startsWith('temp-') || rawPlaceId.includes('lat-'));
-    // Google Maps URL 修正
     const googleUrl = selectedPlace.url || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(selectedPlace.name)}${!isTempId ? `&query_place_id=${rawPlaceId}` : ''}`;
-    
+
     const currentItinerary = itineraryRef.current || [];
     const existingItem = currentItinerary.find(i => i.id === placeId);
     const hasSummary = existingItem?.aiSummary || selectedPlace.aiReason;
@@ -259,53 +276,54 @@ export default function MapZone({
     }
   }, [selectedPlace, fetchGoogleDetails]);
 
-  const { mapElements, pathCoordinates, polylineKey } = useMemo(() => {
+  // 計算邏輯
+  const { mapElements, pathCoordinates } = useMemo(() => {
     const elements = [];
     const path = [];
 
-    let itineraryPins = resolvedLocations.filter(item => {
-      const itemDay = Number(item.day || 1);
-      return item.lat && item.lng && itemDay === Number(activeDay);
+    const rawItems = itinerary.filter(item => Number(item.day || 1) === Number(activeDay));
+
+    let visibleItems = rawItems.map(item => {
+      const lat = item.lat || coordinateCache[item.id]?.lat;
+      const lng = item.lng || coordinateCache[item.id]?.lng;
+      return { ...item, lat, lng };
+    }).filter(item => item.lat && item.lng);
+
+    visibleItems.sort((a, b) => {
+      const getMins = (t) => {
+        if (!t) return 9999;
+        const [h, m] = t.split(':').map(Number);
+        return h * 60 + (m || 0);
+      }
+      const timeDiff = getMins(a.startTime) - getMins(b.startTime);
+      if (timeDiff !== 0) return timeDiff;
+      return (a.order || 0) - (b.order || 0);
     });
 
-    // 🟢 同步 Canvas 的時間排序邏輯
-    itineraryPins.sort((a, b) => {
-        const getMins = (t) => {
-            if(!t) return 9999;
-            const [h,m] = t.split(':').map(Number);
-            return h*60+(m||0);
-        }
-        const timeDiff = getMins(a.startTime) - getMins(b.startTime);
-        if (timeDiff !== 0) return timeDiff;
-        return (a.order || 0) - (b.order || 0);
-    });
-    
-    const currentPolylineKey = itineraryPins.map(p => p.id).join('-');
-
-    itineraryPins.forEach((item, idx) => {
+    visibleItems.forEach((item, idx) => {
       const position = { lat: item.lat, lng: item.lng };
       path.push(position);
-      
+
       const isAi = item.source === 'ai' || (item.id && item.id.startsWith('ai-'));
-      let fillColor = isAi ? '#9333ea' : '#0f766e'; 
+      let fillColor = isAi ? '#9333ea' : '#0f766e';
 
       elements.push({
         type: 'itinerary',
         id: item.id,
         position: position,
         icon: {
-           path: window.google.maps.SymbolPath.CIRCLE,
-           fillColor: fillColor,
-           fillOpacity: 1,
-           strokeWeight: 3,
-           strokeColor: '#ffffff',
-           scale: 12
+          path: window.google.maps.SymbolPath.CIRCLE,
+          fillColor: fillColor,
+          fillOpacity: 1,
+          strokeWeight: 3,
+          strokeColor: '#ffffff',
+          scale: 12
         },
-        label: { 
-            text: (idx + 1).toString(), 
-            color: 'white', 
-            fontSize: '14px', 
-            fontWeight: 'bold' 
+        label: {
+          text: (idx + 1).toString(),
+          color: 'white',
+          fontSize: '14px',
+          fontWeight: 'bold'
         },
         title: item.name,
         zIndex: 100 + idx,
@@ -314,7 +332,7 @@ export default function MapZone({
           if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
           const isTempId = rawId && (rawId.startsWith('temp-') || rawId.includes('lat-'));
           const googleUrl = item.url || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}${!isTempId ? `&query_place_id=${rawId}` : ''}`;
-          
+
           const initialData = { name: item.name, rating: item.rating, user_ratings_total: item.user_ratings_total, price_level: item.price_level, place_id: rawId, url: googleUrl, image: item.image };
           setPoiInfo({ position: position, data: initialData, aiSummary: item.aiSummary });
           if (mapRef.current && rawId && !isTempId && (!item.rating || !item.url || !item.user_ratings_total || !item.image)) {
@@ -327,26 +345,56 @@ export default function MapZone({
     });
 
     if (selectedPlace?.lat) {
-      if (!itineraryPins.some(p => p.id === selectedPlace.id)) {
+      if (!visibleItems.some(p => p.id === selectedPlace.id)) {
         elements.push({
           type: 'selected', id: selectedPlace.id, position: { lat: selectedPlace.lat, lng: selectedPlace.lng },
           icon: {
-              path: window.google.maps.SymbolPath.CIRCLE,
-              fillColor: '#ec4899', // Pink
-              fillOpacity: 1,
-              strokeWeight: 2,
-              strokeColor: '#ffffff',
-              scale: 12
+            path: window.google.maps.SymbolPath.CIRCLE,
+            fillColor: '#ec4899',  // Pink
+            fillOpacity: 1,
+            strokeWeight: 2,
+            strokeColor: '#ffffff',
+            scale: 12
           },
-          label: null, 
+          label: null,
           title: selectedPlace.name, zIndex: 200,
           onClick: () => handleAddToItinerary({ ...selectedPlace, type: 'spot', pos: { lat: selectedPlace.lat, lng: selectedPlace.lng } })
         });
       }
     }
 
-    return { mapElements: elements, pathCoordinates: path, polylineKey: currentPolylineKey };
-  }, [resolvedLocations, sidebarTab, handleAddToItinerary, selectedPlace, activeDay, fetchGoogleDetails]);
+    return { mapElements: elements, pathCoordinates: path };
+  }, [itinerary, sidebarTab, handleAddToItinerary, selectedPlace, activeDay, fetchGoogleDetails, coordinateCache]);
+
+  // 🟢 核心修復：使用 useEffect 直接操作 Google Maps Polyline 實例
+  // 這確保了當 pathCoordinates 更新（例如刪除點）時，地圖線段會強制重繪
+  useEffect(() => {
+    if (!mapRef.current || !window.google) return;
+
+    if (!polylineRef.current) {
+      // 如果線段還沒建立，就建立一個新的
+      polylineRef.current = new window.google.maps.Polyline({
+        path: pathCoordinates,
+        strokeColor: '#0d9488',
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        map: mapRef.current
+      });
+    } else {
+      // 如果已經存在，直接更新路徑
+      polylineRef.current.setPath(pathCoordinates);
+      // 確保線段是顯示在目前的地圖上
+      if (polylineRef.current.getMap() !== mapRef.current) {
+        polylineRef.current.setMap(mapRef.current);
+      }
+    }
+
+    // 清理函式 (Component Unmount 時)
+    return () => {
+      // 這裡不需要做任何事，因為我們希望線段在 component 活著時都持續存在
+      // 只有在 mapRef 改變或 unmount 時才真正清理 (見上方的 onUnmount)
+    };
+  }, [pathCoordinates]);
 
   const renderStars = (r, count) => (!r && !count) ?
     <span> 在 Google 地圖上查看 </span> : (<div className="flex text-yellow-500"><span className="font-bold text-gray-900 mr-1">{r}</span><Star size={12} fill="currentColor" />{count && <span className="text-gray-500 ml-1">({count})</span>}</div>);
@@ -365,10 +413,10 @@ export default function MapZone({
           <div className="relative w-full h-full">
             {showSearchButton && <div className="absolute top-5 left-1/2 transform -translate-x-1/2 z-10"><button onClick={handleSearchAreaClick} className="bg-white text-teal-700 px-4 py-2 rounded-full shadow-md font-bold text-sm flex gap-2"><Search size={14} /> 搜尋此區域 </button></div>}
             <GoogleMap mapContainerStyle={containerStyle} center={centerState} zoom={zoomState} onLoad={onLoad} onUnmount={onUnmount} options={{ disableDefaultUI: true, zoomControl: true, clickableIcons: true }}>
-              {pathCoordinates.length > 1 && <Polyline key={`poly-${activeDay}-${polylineKey}`} path={pathCoordinates} options={{ strokeColor: '#0d9488', strokeOpacity: 0.8, strokeWeight: 2 }} />}
+              {/* 🟢 移除 <Polyline> JSX，改由上方 useEffect 控制 */}
               {mapElements.map((e, i) => (
-                <Marker key={`${e.id}-${activeDay}`} position={e.position} title={e.title} zIndex={e.zIndex} onClick={e.onClick} 
-                  icon={e.icon} label={e.label} 
+                <Marker key={`${e.id}-${activeDay}`} position={e.position} title={e.title} zIndex={e.zIndex} onClick={e.onClick}
+                  icon={e.icon} label={e.label}
                 />
               ))}
               {poiInfo && (
