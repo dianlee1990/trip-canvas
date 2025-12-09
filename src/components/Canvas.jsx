@@ -6,7 +6,7 @@ import parse from 'date-fns/parse';
 import startOfWeek from 'date-fns/startOfWeek';
 import getDay from 'date-fns/getDay';
 import zhTW from 'date-fns/locale/zh-TW';
-import { useDroppable } from '@dnd-kit/core';
+import { useDroppable } from '@dnd-kit/core'; // 🟢 新增：引入 useDroppable
 import {
   MapPin, Clock, Trash2, Sparkles, User, Heart, Share2,
   Download, ChevronLeft, ChevronRight, Edit3, Loader2,
@@ -69,7 +69,7 @@ const getAffiliateLink = (item) => {
   return null;
 };
 
-// Custom Event Component
+// 🟢 Custom Event Component
 const CustomEvent = ({ event }) => {
   const { item, myFavorites, toggleFavorite, handleRemoveFromItinerary, onPlaceSelect, tripId, sequenceNumber } = event;
   const [showMenu, setShowMenu] = useState(false);
@@ -136,13 +136,17 @@ const CustomEvent = ({ event }) => {
   const duration = (event.end - event.start) / 60000;
   const isTiny = duration < 45;
 
+  // 🟢 智慧整合敘述 (Smart Summary)
+  // 將 營業時間、花費、亮點 串接成一句話
   const smartSummary = useMemo(() => {
     const parts = [];
-    if (item.aiHours) parts.push(item.aiHours);
-    if (item.aiCost) parts.push(`均消 ${item.aiCost}`);
-    if (item.aiHighlights) parts.push(item.aiHighlights);
+    if (item.aiHours) parts.push(item.aiHours); // "09:00-22:00"
+    if (item.aiCost) parts.push(`均消 ${item.aiCost}`); // "均消 $100"
+    if (item.aiHighlights) parts.push(item.aiHighlights); // "必吃海南雞"
 
     if (parts.length === 0) return item.aiSummary || "";
+
+    // 用中文全形逗號連接，並截斷過長文字
     const fullText = parts.join('，');
     return fullText.length > 100 ? fullText.substring(0, 99) + "..." : fullText;
   }, [item]);
@@ -150,11 +154,15 @@ const CustomEvent = ({ event }) => {
   return (
     <div
       className={`h-full w-full flex flex-col relative rounded-lg border-l-[4px] shadow-sm transition-all text-gray-800 group
-  ${isAi ? 'border-purple-500 bg-purple-50' : 'border-teal-600 bg-teal-50'}
+  ${isAi
+          ? 'border-purple-500 bg-purple-50'
+          : 'border-teal-600 bg-teal-50'
+        }
   `}
       title={item.name}
       onClick={(e) => !showMenu && onPlaceSelect?.(item)}
     >
+      {/* 極簡模式 (15min) */}
       {isTiny ? (
         <div className="flex items-center justify-between h-full px-1.5 overflow-hidden">
           <div className="flex items-center gap-1 min-w-0 flex-1">
@@ -193,6 +201,7 @@ const CustomEvent = ({ event }) => {
           </div>
         </div>
       ) : (
+        /* 完整模式 */
         <>
           <div className="flex justify-between items-start p-1.5 pb-0">
             <div className="flex-1 min-w-0 mr-1">
@@ -234,6 +243,7 @@ const CustomEvent = ({ event }) => {
             </div>
           </div>
 
+          {/* 🟢 整合後的 AI 摘要區塊 (取代原本分開的列) */}
           {smartSummary && (
             <div className="px-1.5 mt-1 ml-5">
               <div className="flex items-start gap-1 p-0.5 px-1 rounded bg-white/60 border border-purple-100/50 text-[10px] text-gray-600 leading-tight">
@@ -294,7 +304,7 @@ export default function Canvas({
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [isSavingDate, setIsSavingDate] = useState(false);
 
-  // 定義 Droppable 區域 (dnd-kit)
+  // 🟢 修正：定義 Droppable 區域
   const { setNodeRef, isOver } = useDroppable({
     id: 'canvas-droppable-zone',
   });
@@ -398,40 +408,33 @@ export default function Canvas({
     });
   }, [handleUpdateItem, currentTrip]);
 
-  // 🟢 1. 用於獲取正在拖曳的 Sidebar 項目
   const dragFromOutsideItem = useCallback(() => {
     try {
-      // 這裡假設拖曳發生時，Sidebar 會將資料寫入全域變數 (目前的實作方式)
-      // dnd-kit 本身其實不需要這個，這是 react-big-calendar 的特殊要求
       const json = window.__draggedSidebarItem;
       return json ? JSON.parse(json) : null;
     } catch (e) { return null; }
   }, []);
 
-  // 🟢 2. 核心修改：接收外部拖曳並指定時間
   const onDropFromOutside = useCallback(async ({ start, end }) => {
     const draggedItemString = window.__draggedSidebarItem;
     if (draggedItemString) {
       const item = JSON.parse(draggedItemString);
-      
-      // ✅ 關鍵修改：使用 `start` 參數來取得放下時的時間
-      const dropTime = format(start, 'HH:mm');
-      const duration = 60; // 預設 60 分鐘
+      const startTime = format(start, 'HH:mm');
+      const duration = 60;
 
       await handleAddToItinerary({
         ...item,
-        startTime: dropTime, // ✅ 設定為使用者拖曳到的時間點
+        startTime: startTime,
         duration: duration,
         day: activeDay
       });
 
       logEvent('add_item_drag', currentTrip?.id, auth.currentUser?.uid, {
         itemName: item.name,
-        startTime: dropTime,
-        source: 'sidebar_drag_to_calendar'
+        startTime: startTime,
+        source: 'sidebar_drag'
       });
 
-      // 清除全域暫存
       window.__draggedSidebarItem = null;
     }
   }, [handleAddToItinerary, activeDay, currentTrip]);
@@ -449,22 +452,20 @@ export default function Canvas({
   };
 
   return (
+    // 🟢 修正：綁定 ref 與 isOver 樣式
     <div
       ref={setNodeRef}
       className={`flex-1 w-full bg-white flex flex-col h-full relative z-10 border-r border-gray-200 transition-colors ${isOver ? 'bg-teal-50/50' : ''}`}
     >
       <style>{`
-        .rbc-event-label { display: none !important; }
-        .rbc-time-slot { min-height: 30px; }
-        /* 調整拖曳時的輔助線樣式 */
-        .rbc-addons-dnd-resize-ns-icon { width: 100%; height: 12px; background: transparent; bottom: 0; display: flex; align-items: center; justify-content: center; opacity: 0.5; transition: opacity 0.2s; }
-        .rbc-addons-dnd-resize-ns-icon::after { content: ""; display: block; width: 30px; height: 3px; background-color: rgba(0,0,0,0.2); border-radius: 2px; border-top: 1px solid rgba(255,255,255,0.5); }
-        .rbc-addons-dnd-resize-ns-icon:hover { opacity: 1; background-color: rgba(0,0,0,0.05); cursor: ns-resize; }
-        /* 讓今日高亮更明顯 */
-        .rbc-today { background-color: #f0fdfa !important; }
-      `}</style>
+  .rbc-event-label { display: none !important; }
+  .rbc-time-slot { min-height: 30px; }
+  .rbc-addons-dnd-resize-ns-icon { width: 100%; height: 12px; background: transparent; bottom: 0; display: flex; align-items: center; justify-content: center; opacity: 0.5;
+  transition: opacity 0.2s; }
+  .rbc-addons-dnd-resize-ns-icon::after { content: ""; display: block; width: 30px; height: 3px; background-color: rgba(0,0,0,0.2); border-radius: 2px; border-top: 1px solid rgba(255,255,255,0.5); }
+  .rbc-addons-dnd-resize-ns-icon:hover { opacity: 1; background-color: rgba(0,0,0,0.05); cursor: ns-resize; }
+  `}</style>
 
-      {/* Header 區域保持不變 */}
       <div className="hidden md:block p-4 border-b border-gray-100 bg-white sticky top-0 z-20">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -514,19 +515,14 @@ export default function Canvas({
           onView={() => { }}
           toolbar={false}
 
-          // 🟢 啟用拖放相關設定
           draggableAccessor={() => true}
           resizable
-          selectable // 允許點選空白處 (通常與拖曳配合更好)
-          droppable={true} // 🟢 關鍵：允許外部物件掉落
 
-          // 處理既有行程的移動與縮放
           onEventDrop={moveEvent}
           onEventResize={resizeEvent}
 
-          // 🟢 處理從 Sidebar 拖進來的事件
-          dragFromOutsideItem={dragFromOutsideItem} // 告訴 calendar 正在拖曳什麼
-          onDropFromOutside={onDropFromOutside}     // 當放開滑鼠時觸發，並帶有時間資訊
+          dragFromOutsideItem={dragFromOutsideItem}
+          onDropFromOutside={onDropFromOutside}
 
           scrollToTime={defaultScrollTime}
 
