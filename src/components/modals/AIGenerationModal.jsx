@@ -173,13 +173,11 @@ export default function AIGenerationModal({
       const moodsLabels = TRIP_MOODS.filter(m => selectedMoods.includes(m.id)).map(m => m.label).join('、');
       const daysToPlan = selectedDays.join('、');
 
-      // 🟢 1. 建立既有行程對照表 (Fix Bug 2: 建立避雷名單)
       const existingIds = new Set(existingItinerary.map(i => {
         return i.place_id ? String(i.place_id).replace(/^(ai-|place-|sidebar-)/, '') : '';
       }));
       const existingNames = new Set(existingItinerary.map(i => i.name));
 
-      // 🟢 2. 過濾待排收藏清單 (排除已在行程中的)
       const availableFavorites = userFavorites.filter(fav => {
         const rawId = fav.place_id || fav.id;
         const cleanId = rawId ? String(rawId).replace(/^(ai-|place-|sidebar-)/, '') : '';
@@ -196,7 +194,6 @@ export default function AIGenerationModal({
         }).join('\n')
         : "無 (請完全依賴 AI 推薦)";
 
-      // 🟢 3. 準備「既有手動行程」的詳細時間表，給 AI 參考空檔 (Fix Bug 3)
       const manualItems = existingItinerary.filter(i => i.source !== 'ai' && i.source !== undefined);
       const manualItemNames = manualItems.map(i => i.name).join('、');
 
@@ -213,6 +210,7 @@ export default function AIGenerationModal({
         const tonightHotel = dailyHotels[d.day] || defaultHotel || "市中心";
         const lastNightHotel = dailyHotels[d.day - 1] || defaultHotel || "市中心";
 
+        // 🟢 修正邏輯：明確定義起點與終點的描述字串
         let startPoint = isFirstDay
           ? (flightOut.airport ? `${flightOut.airport} 機場 (抵達 ${flightOut.time || '未定'})` : tonightHotel)
           : lastNightHotel;
@@ -221,7 +219,6 @@ export default function AIGenerationModal({
           ? `${flightIn.airport} 機場 (起飛 ${flightIn.time || '未定'})`
           : tonightHotel;
 
-        // 整理當天的手動行程與時間
         const currentDayManualItems = manualItems
           .filter(i => Number(i.day) === d.day)
           .sort((a, b) => {
@@ -241,14 +238,15 @@ export default function AIGenerationModal({
 
         hotelPrompt += `
         【Day ${d.day} 行程現況】
-        - 起點：${startPoint}
-        - 終點：${endPoint}
+        - **起點**：${startPoint}
+        - **終點**：${endPoint}
         - **該日既有手動行程 (絕對不可刪除，不可重疊，不可重複推薦)**：
         ${existingScheduleText}
         - 請找出上述時間表中的「空檔」，並插入合適的行程。
         \n`;
       });
 
+      // 🟢 修正：在 Prompt 中加入「住宿與起訖點強制規則」
       const prompt = `
         你是一位旅遊規劃大師。請針對「${destination}」規劃第 [${daysToPlan}] 天行程。
 
@@ -263,6 +261,12 @@ export default function AIGenerationModal({
            - 如果空檔不夠，就不要硬塞。
            - **絕對不要** 推薦 "既有手動行程" 列表中已存在的地點。
         4. **時間格式**：請務必為每個推薦點生成合理的 "startTime" (例如 "10:30")，確保整天行程順序合理。
+        
+        【重要：起訖點與住宿規則 (Fix Bug 4)】
+        - 每日行程 **必須** 考慮該日的「起點」與「終點」位置。
+        - **第一站**建議安排在該日「起點」(如住宿點) 附近的景點或早餐。
+        - **最後一站**建議安排在該日「終點」(如住宿點) 附近，或預留交通時間返回。
+        - 若起點或終點是機場，請務必計算前往或離開機場的交通時間。
 
         【最高指導原則：收藏清單優先 (Priority 1)】
         使用者有一份「待訪收藏清單」，請務必 **優先** 將這些地點排入行程。

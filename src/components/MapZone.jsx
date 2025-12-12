@@ -242,8 +242,8 @@ export default function MapZone({
     let rawPlaceId = selectedPlace.place_id || placeId;
     if (typeof rawPlaceId === 'string') rawPlaceId = rawPlaceId.replace(/^(ai-|place-|sidebar-)/, '');
     const isTempId = rawPlaceId && (rawPlaceId.startsWith('temp-') || rawPlaceId.includes('lat-'));
-    const googleUrl = selectedPlace.url || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(selectedPlace.name)}${!isTempId ? `&query_place_id=${rawPlaceId}` : ''}`;
-
+    // [修正] MapZone.jsx - useEffect 內
+    const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}${!isTempId ? `&query_place_id=${rawPlaceId}` : ''}`;
     const currentItinerary = itineraryRef.current || [];
     const existingItem = currentItinerary.find(i => i.id === placeId);
     const hasSummary = existingItem?.aiSummary || selectedPlace.aiReason;
@@ -331,7 +331,8 @@ export default function MapZone({
           let rawId = item.place_id || item.id;
           if (typeof rawId === 'string') rawId = rawId.replace(/^(ai-|place-|sidebar-)/, '');
           const isTempId = rawId && (rawId.startsWith('temp-') || rawId.includes('lat-'));
-          const googleUrl = item.url || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(item.name)}${!isTempId ? `&query_place_id=${rawId}` : ''}`;
+          // [修正] MapZone.jsx - useEffect 內
+          const googleUrl = selectedPlace.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}${!isTempId ? `&query_place_id=${rawPlaceId}` : ''}`;
 
           const initialData = { name: item.name, rating: item.rating, user_ratings_total: item.user_ratings_total, price_level: item.price_level, place_id: rawId, url: googleUrl, image: item.image };
           setPoiInfo({ position: position, data: initialData, aiSummary: item.aiSummary });
